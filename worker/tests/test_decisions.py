@@ -220,3 +220,29 @@ def test_build_chunks_respects_bounds() -> None:
     lengths = [features.total_seconds(c) for c in chunks]
     assert all(config.TONE_CHUNK_MIN_SEC <= n <= config.TONE_CHUNK_MAX_SEC for n in lengths)
     assert sum(lengths) == pytest.approx(67.5)
+
+
+def _chunk(channel: int, start: float, end: float) -> features.GapChunk:
+    return features.GapChunk(channel, (start, end), (start, end))
+
+
+def test_gap_chunks_are_packed_into_clips_of_at_most_ast_chunk_sec() -> None:
+    chunks = [_chunk(0, 0, 3), _chunk(0, 5, 9), _chunk(0, 12, 15), _chunk(0, 20, 21), _chunk(1, 2, 4)]
+    groups = features.pack_gap_chunks(chunks)
+    # 3 + 4 + 3 s = 10 s fills a clip, the next 1 s starts a new one, another channel always does
+    assert [[c.span for c in g] for g in groups] == [[(0, 3), (5, 9), (12, 15)], [(20, 21)], [(2, 4)]]
+    assert all(sum(c.span[1] - c.span[0] for c in g) <= config.AST_CHUNK_SEC for g in groups)
+    assert features.pack_gap_chunks([]) == []
+
+
+def test_ast_is_skipped_only_when_it_cannot_change_the_noise_result() -> None:
+    _ast_skip_reason = pipeline._ast_skip_reason
+    static = config.STATIC_RATE_MIN + 0.1
+    clean = config.BAK_NOISE_MAX
+    assert _ast_skip_reason(static, [2.0]) == "sharp static detected"
+    assert _ast_skip_reason(0.0, [clean, clean + 0.5]).startswith("DNSMOS BAK")
+    assert _ast_skip_reason(0.0, [None]) == "no DNSMOS background score"
+    assert _ast_skip_reason(0.0, [clean, clean - 0.1]) is None  # one channel may be noisy
+    # every skip reason is a case where the decision is "no noise" or static, whatever AST says
+    assert features.decide_background_noise("TV", 0.99, clean, 1.0) == features.NO_NOISE
+    assert features.decide_background_noise("TV", 0.99, None, 1.0) == features.NO_NOISE

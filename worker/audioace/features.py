@@ -297,6 +297,27 @@ def _gap_chunks(channels: list[np.ndarray], speech_by_channel: list[list[Interva
     return chunks
 
 
+def pack_gap_chunks(chunks: list[GapChunk]) -> list[list[GapChunk]]:
+    """Group consecutive gap chunks of one channel into clips of at most AST_CHUNK_SEC.
+
+    AST pads every input to 10.24 s, so one clip per short gap pays for 10 s of compute each;
+    packing them cuts the number of AST passes several-fold. A short noise then shares its
+    clip with other gaps, which lowers its score somewhat.
+    """
+    groups: list[list[GapChunk]] = []
+    length = 0.0
+    for chunk in chunks:
+        piece = chunk.span[1] - chunk.span[0]
+        current = groups[-1] if groups else None
+        if current is None or current[0].channel != chunk.channel or length + piece > config.AST_CHUNK_SEC:
+            groups.append([chunk])
+            length = piece
+        else:
+            current.append(chunk)
+            length += piece
+    return groups
+
+
 def _ast_probabilities(clips: list[np.ndarray]) -> np.ndarray:
     extractor, model = models.get("ast")
     batches = []
@@ -310,16 +331,17 @@ def _ast_probabilities(clips: list[np.ndarray]) -> np.ndarray:
 def sound_events(
     channels: list[np.ndarray], speech_by_channel: list[list[Interval]], duration: float
 ) -> SoundEvents:
-    """Run the AudioSet classifier on non-speech gaps of every channel."""
-    chunks = _gap_chunks(channels, speech_by_channel, duration)
-    if not chunks:
+    """Run the AudioSet classifier on non-speech gaps of every channel, packed into <= 10 s clips."""
+    groups = pack_gap_chunks(_gap_chunks(channels, speech_by_channel, duration))
+    if not groups:
         return SoundEvents(None, 0.0, frozenset())
 
-    probs = _ast_probabilities([slice_audio(channels[c.channel], c.span) for c in chunks])
+    clips = [np.concatenate([slice_audio(channels[c.channel], c.span) for c in group]) for group in groups]
+    probs = _ast_probabilities(clips)
     _, model = models.get("ast")
     categories = [label_category(model.config.id2label[i]) for i in range(probs.shape[1])]
 
-    type_scores = np.zeros((len(chunks), len(NOISE_TYPES)))
+    type_scores = np.zeros((len(groups), len(NOISE_TYPES)))
     for col, category in enumerate(categories):
         if category is not None:
             k = NOISE_TYPES.index(category)
@@ -327,7 +349,10 @@ def sound_events(
 
     best = int(type_scores.max(axis=0).argmax())
     noisy = frozenset(
-        (c.channel, c.gap) for c, row in zip(chunks, type_scores) if row[best] > config.NOISE_EVENT_MIN
+        (c.channel, c.gap)
+        for group, row in zip(groups, type_scores)
+        if row[best] > config.NOISE_EVENT_MIN
+        for c in group
     )
     return SoundEvents(noise_type=NOISE_TYPES[best], score=float(type_scores[:, best].max()), noisy_gaps=noisy)
 

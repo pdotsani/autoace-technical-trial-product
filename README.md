@@ -10,7 +10,7 @@ noise, audio quality, speaker overlap and long silences. The frontend lives in a
 
 ```
 worker/                  Python hybrid worker: the analysis pipeline and its Lambda adapter
-api/                     API Lambda (TypeScript), coming later
+api/                     API Lambda (TypeScript): runs, uploads, validation, worker fan-out, results
 docs/                    memo and reports, coming later
 shared/schema/           result.schema.json, the output contract shared by worker, API and frontend
 experiments/
@@ -25,14 +25,14 @@ TODO. For the worker, see [worker/README_worker.md](worker/README_worker.md#run-
 
 ## Deploy worker
 
-TODO: Docker image build (models downloaded during the build, `HF_TOKEN` as a build secret),
-push to ECR, Lambda configuration. Event contract, S3 layout and IAM:
+Build and run the image locally, plus suggested Lambda settings:
+[worker/README_worker.md](worker/README_worker.md#docker-image). TODO: push to ECR and create the Lambda. Event contract, S3 layout and IAM:
 [worker/README_worker.md](worker/README_worker.md#lambda-worker). Libraries:
 [worker/README_libraries.md](worker/README_libraries.md).
 
 ## Deploy API
 
-TODO.
+See [api/DEPLOY.md](api/DEPLOY.md); routes and S3 layout in [api/README.md](api/README.md).
 
 ## Reproduce validation
 

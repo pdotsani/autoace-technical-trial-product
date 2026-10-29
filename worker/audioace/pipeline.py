@@ -61,6 +61,8 @@ class Signals(BaseModel):
     tv_score: float
     tv_active: list[Interval]
     static_rate: float
+    # Why the AST sound-event and TV checks were not run (their result could not matter), or None
+    ast_skipped: str | None = None
     emotion_scores: list[dict[str, float]]  # emotion2vec native scores per customer chunk
     tone_classifier_probs: list[dict[str, float]] | None = None
     # emotion2vec_plus_large native scores for the last customer chunk (None if not installed)
@@ -127,6 +129,22 @@ def _background_noise(
     )
 
 
+def _ast_skip_reason(static_rate: float, baks: list[float | None]) -> str | None:
+    """Why AST can't change the noise result, or None when it has to run.
+
+    Sharp static is decided first and wins; every other noise type needs the lowest DNSMOS BAK
+    below BAK_NOISE_MAX (see _background_noise and features.decide_background_noise).
+    """
+    if features.decide_static(static_rate) is not None:
+        return "sharp static detected"
+    known = [b for b in baks if b is not None]
+    if not known:
+        return "no DNSMOS background score"
+    if min(known) >= config.BAK_NOISE_MAX:
+        return f"DNSMOS BAK {min(known):.2f} >= BAK_NOISE_MAX {config.BAK_NOISE_MAX}"
+    return None
+
+
 def _confidence(tone_probability: float, customer_channel_uncertain: bool) -> float:
     # TODO: replace with calibrated model
     penalty = config.UNCERTAIN_CHANNEL_PENALTY if customer_channel_uncertain else 0.0
@@ -149,9 +167,14 @@ def measure(path: Path) -> Signals:
     dnsmos = _run_stage("dnsmos", lambda: [features.dnsmos(ch, sp) for ch, sp in zip(audio.channels, speech)])
     quality = _run_stage("quality", lambda: _quality_signals(audio, speech, dnsmos))
 
-    events = _run_stage("sound_events", lambda: features.sound_events(audio.channels, speech, audio.duration_sec))
-    tv = _run_stage("television", lambda: features.television_activity(audio.channels, audio.duration_sec))
     static_rate = _run_stage("static", lambda: features.static_burst_rate(preprocess.decode_fullband(path)))
+    # AST is the slowest check; skip it when static or a clean BAK already decides the noise result
+    ast_skipped = _ast_skip_reason(static_rate, [d.bak if d else None for d in dnsmos])
+    if ast_skipped:
+        events, tv = features.SoundEvents(None, 0.0, frozenset()), features.TelevisionActivity(0.0, [])
+    else:
+        events = _run_stage("sound_events", lambda: features.sound_events(audio.channels, speech, audio.duration_sec))
+        tv = _run_stage("television", lambda: features.television_activity(audio.channels, audio.duration_sec))
 
     emotions, classifier_probs, end_emotions = _run_stage(
         "tone", lambda: tone.measure_emotions(customer_audio, customer_speech)
@@ -170,6 +193,7 @@ def measure(path: Path) -> Signals:
         tv_score=tv.score,
         tv_active=tv.active,
         static_rate=static_rate,
+        ast_skipped=ast_skipped,
         emotion_scores=emotions,
         tone_classifier_probs=classifier_probs,
         end_emotion_scores=end_emotions,

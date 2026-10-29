@@ -48,6 +48,7 @@ def apply_offline_env() -> None:
     """Force Hugging Face libraries to read only from MODELS_DIR/hf. Call before importing them."""
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    os.environ.setdefault("PYANNOTE_METRICS_ENABLED", "false")  # pyannote 4 telemetry phones home
     os.environ["HF_HUB_CACHE"] = str(HF_CACHE_DIR)
     os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 

@@ -109,6 +109,66 @@ defaults to `$AWS_PROFILE`; `--timeout` sets the simulated Lambda timeout (defau
 `s3:PutObject` on `runs/*/results/*` and `runs/*/metrics/*`, and CloudWatch Logs
 (`logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents`).
 
+## Docker image
+
+`worker/Dockerfile` builds the Lambda container image (build context: `worker/`).
+
+- Base: `public.ecr.aws/lambda/python:3.12` (Amazon Linux 2023). The local venv is 3.11; the
+  3.11 image is Amazon Linux 2, whose glibc is too old for current torch wheels.
+- CPU-only torch / torchaudio, ffmpeg (static binary from `imageio-ffmpeg`), `requirements.txt`.
+- Models are downloaded **during the build** by `scripts/download_models.py` into
+  `/opt/models`, including the gated pyannote models and emotion2vec_plus_large. Nothing is
+  copied from `worker/models/` (`.dockerignore` excludes it).
+- The build ends by loading every model, so a missing or broken model fails the build.
+- Library caches point at `/tmp` (the only writable path on Lambda); Hugging Face is forced
+  offline and pyannote telemetry is off, so the worker makes no network calls except the
+  audio download and the S3 writes.
+
+**Build** (Docker running; `HF_TOKEN` from an account that accepted the pyannote terms):
+
+```bash
+cd worker
+export HF_TOKEN=hf_...          # or: export $(grep ^HF_TOKEN= .env)
+docker build --platform linux/arm64 --secret id=hf_token,env=HF_TOKEN -t auto-ace-worker .
+```
+
+The token is passed as a BuildKit secret, so it is not stored in any layer. Use
+`--platform linux/amd64` for an x86_64 Lambda; arm64 (Graviton) is cheaper per second.
+
+**Run it locally** (the base image includes the Lambda Runtime Interface Emulator):
+
+```bash
+docker run --rm -p 9000:8080 -v ~/Downloads:/audio:ro -v "$PWD/out:/var/task/out" auto-ace-worker
+# in another terminal
+curl -s localhost:9000/2015-03-31/functions/function/invocations \
+  -d '{"name": "call_001.ogg", "audio_path": "/audio/call_001.ogg"}'
+# -> {"name": "call_001.ogg", "status": "done", "result_key": "out/local/results/call_001.ogg.json"}
+```
+
+To test S3 from the container, also pass `-e BUCKET=... -e AWS_ACCESS_KEY_ID=...
+-e AWS_SECRET_ACCESS_KEY=... -e AWS_SESSION_TOKEN=... -e AWS_REGION=...` and send an event
+with `run_id`, `user_id` and a presigned `audio_url`.
+
+**Lambda settings** (starting points):
+
+| Setting | Value | Why |
+|---|---|---|
+| Architecture | arm64 (match `--platform`) | cheaper per GB-second |
+| Memory | 8192 MB (10240 MB if too slow) | peak memory was 4.6 GB on the 172 s sample call, with both emotion models loaded. Lambda's CPU share grows with memory, and the run is CPU-bound (it used about 2.6 cores locally) |
+| Timeout | 900 s | a 172 s mono call took about 2 min on an M-series Mac, mostly speaker separation; Lambda CPUs may be slower. The handler stops 30 s early to write a failure |
+| Ephemeral storage (`/tmp`) | 2048 MB | downloads up to `MAX_AUDIO_MB` (500) plus library caches |
+| Environment | `BUCKET`, optionally `MAX_AUDIO_MB`, `TORCH_NUM_THREADS`, `CUSTOMER_CHANNEL` | see "Lambda worker" |
+
+Cold starts load every model during Lambda's init phase: 11 s in the container under the
+local emulator. Lambda allows 10 s for init; when it takes longer, Lambda reruns init as part
+of the first invocation (counted against its timeout and billed), so the first call after a
+cold start is about 11 s slower but still works. The image is 6.2 GB unpacked (4.0 GB
+compressed), under Lambda's 10 GB limit; models are 3.7 GB of it and Python packages 2.2 GB.
+
+Measured in the container (arm64, Docker Desktop on an M-series Mac, 12 CPUs): call_001
+(31 s of audio) in 29 s and call_003 (172 s) in 111 s, 59 s of it speaker separation; both
+results identical to the CLI.
+
 ## Model folder layout
 
 What each library and model does: [README_libraries.md](README_libraries.md).
@@ -169,8 +229,16 @@ silence is ignored unless `LONG_SILENCE_INCLUDE_EDGES=1`.
 - The DNSMOS background score (BAK) is never used here.
 
 **`background_noise_*`.**
-- The AudioSet classifier (AST) runs on non-speech gaps of every channel, in chunks of up to
-  10 s. Digital silence is skipped.
+- The AudioSet classifier (AST) runs on non-speech gaps of every channel. Gaps are packed
+  in time order into clips of at most 10 s (`AST_CHUNK_SEC`), because AST pads every input to
+  10.24 s and one clip per short gap would cost a full pass each. Every gap in a clip gets
+  that clip's score. A brief noise sharing a clip with quiet gaps scores lower than it would
+  alone. Gaps under 0.5 s (`NOISE_MIN_GAP_SEC`) and digital silence are skipped.
+- AST (the gap check and the TV check) is skipped entirely when its answer can't change the
+  result: sharp static was found (static wins), or the lowest DNSMOS BAK is at least
+  `BAK_NOISE_MAX` (no other noise can be reported). `Signals.ast_skipped` records why.
+  Because this happens while measuring, changing `BAK_NOISE_MAX` or the static thresholds
+  means re-recording the test fixtures.
 - Speech, silence, room tone, signal artifacts (static, hum, white noise, distortion…), the
   speaker's own sounds (breathing, cough…) and phone-line tones are ignored. That way poor
   audio alone can never produce a noise verdict.
