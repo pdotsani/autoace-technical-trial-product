@@ -1,0 +1,36 @@
+# Build context is worker/. The image needs: audioace/, adapters/, requirements.txt and
+# scripts/download_models.py (models are downloaded during the build, not copied in).
+
+# Local environments, caches, outputs
+.venv/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.ruff_cache/
+out/
+
+# Secrets: HF_TOKEN goes in as a build secret, never in the image
+.env
+.env.*
+!.env.example
+
+# Local model weights and caches (downloaded during the build instead)
+models/
+**/.cache/
+
+# Tests and local-only tools
+tests/
+requirements-dev.txt
+pytest.ini
+scripts/invoke_local.py
+scripts/record_signals.py
+
+# Audio and documents
+**/*.wav
+**/*.ogg
+**/*.mp3
+**/*.m4a
+**/*.flac
+**/*.pdf
+**/*.md
+.DS_Store

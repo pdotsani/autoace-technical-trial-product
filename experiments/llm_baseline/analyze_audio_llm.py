@@ -4,10 +4,10 @@ Assumes the pod serves the model through vLLM's OpenAI-compatible API, e.g.:
 
     vllm serve Qwen/Qwen2.5-Omni-7B --port 8000
 
-Configuration is read from eval/.env (see eval/.env.example).
+Configuration is read from experiments/llm_baseline/.env (see .env.example there).
 
 Usage:
-    python eval/analyze_audio_llm.py path/to/call.wav
+    python experiments/llm_baseline/analyze_audio_llm.py path/to/call.wav
 """
 
 import argparse
@@ -26,7 +26,7 @@ from jsonschema import ValidationError, validate
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 MODEL = os.environ.get("MODEL", "Qwen/Qwen2.5-Omni-7B")
-SCHEMA_PATH = Path(__file__).resolve().parent.parent / "shared" / "schema" / "result.schema.json"
+SCHEMA_PATH = Path(__file__).resolve().parents[2] / "shared" / "schema" / "result.schema.json"
 
 SYSTEM_PROMPT = (
     "You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, "
@@ -126,7 +126,7 @@ def main() -> int:
     if not base_url:
         pod_id = os.environ.get("RUNPOD_POD_ID")
         if not pod_id:
-            parser.error("set RUNPOD_BASE_URL or RUNPOD_POD_ID in eval/.env")
+            parser.error("set RUNPOD_BASE_URL or RUNPOD_POD_ID in experiments/llm_baseline/.env")
         port = os.environ.get("RUNPOD_PORT", "8000")
         base_url = f"https://{pod_id}-{port}.proxy.runpod.net/v1"
 

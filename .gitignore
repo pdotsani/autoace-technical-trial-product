@@ -1,6 +1,34 @@
+# Python
 .venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Local outputs (scripts/invoke_local.py)
+out/
+
+# Secrets
 .env
+.env.*
+!.env.example
+
+# Data and audio: call recordings and labels stay out of git.
+# The tests generate their audio at run time; tests/fixtures/ holds only .signals.json files.
+data/
+datasets/
+*.wav
+*.ogg
+*.mp3
+*.m4a
+*.flac
+*.pdf
+
+# Downloaded model weights (scripts/download_models.py, run during the Docker build)
 worker/models/
-worker/out/
+models/hf/
+
+# OS / frontend tooling
+.DS_Store
+node_modules/
+dist/

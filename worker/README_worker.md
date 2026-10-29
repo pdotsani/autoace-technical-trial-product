@@ -111,6 +111,8 @@ defaults to `$AWS_PROFILE`; `--timeout` sets the simulated Lambda timeout (defau
 
 ## Model folder layout
 
+What each library and model does: [README_libraries.md](README_libraries.md).
+
 `MODELS_DIR` defaults to `worker/models` locally and `/opt/models` inside Lambda.
 
 ```
