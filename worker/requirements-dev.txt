@@ -1,0 +1,5 @@
+# Development and tests only; not installed in the Lambda image.
+-r requirements.txt
+pytest==9.2.0
+jsonschema==4.26.0
+moto[s3]==5.2.5

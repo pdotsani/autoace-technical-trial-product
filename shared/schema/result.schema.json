@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CallAudioAnalysis",
+  "type": "object",
+  "properties": {
+    "emotional_tone": {
+      "type": "string",
+      "enum": ["neutral", "satisfied", "frustrated", "upset", "distressed"],
+      "description": "The customer's tone"
+    },
+    "emotional_intensity": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "background_noise_present": {
+      "type": "boolean"
+    },
+    "background_noise_type": {
+      "type": "string",
+      "description": "Short description; empty string when none"
+    },
+    "background_noise_severity": {
+      "type": "string",
+      "enum": ["none", "low", "medium", "high"]
+    },
+    "audio_quality": {
+      "type": "string",
+      "enum": ["clear", "slightly_impaired", "severely_impaired"]
+    },
+    "speaker_overlap_present": {
+      "type": "boolean"
+    },
+    "long_silence_present": {
+      "type": "boolean"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  },
+  "required": [
+    "emotional_tone",
+    "emotional_intensity",
+    "background_noise_present",
+    "background_noise_type",
+    "background_noise_severity",
+    "audio_quality",
+    "speaker_overlap_present",
+    "long_silence_present",
+    "confidence"
+  ],
+  "additionalProperties": false
+}

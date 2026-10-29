@@ -1,0 +1,21 @@
+# CPU-only torch and torchaudio are NOT listed here: install them first, separately, e.g.
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+# ffmpeg must be on PATH at runtime (or set FFMPEG_BIN).
+# Versions below are the ones this worker was tested with.
+numpy==2.4.6
+pydantic==2.14.1
+requests==2.34.2
+onnxruntime==1.31.1
+silero-vad==6.2.3
+transformers==5.21.0
+huggingface_hub==2.3.0
+pyannote.audio==4.0.7
+funasr==1.4.17
+joblib==1.6.0
+scikit-learn==1.9.1
+boto3==1.43.121
+
+# scripts/download_models.py (build time only)
+python-dotenv==1.2.4
+
+# tests: see requirements-dev.txt

@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+worker/models/
+worker/out/
