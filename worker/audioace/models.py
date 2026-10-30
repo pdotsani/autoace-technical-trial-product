@@ -1,9 +1,14 @@
-"""Load every model once, at import time, from MODELS_DIR only (never from the network).
+"""Load the models from MODELS_DIR only (never from the network).
+
+Most load once, at import time. The models in _ON_DEMAND load on their first get() instead,
+and release() frees them again: they are only needed for some calls, so they stay out of
+memory (and out of the cold start) otherwise.
 
 A model that cannot be loaded does not break the import: its error is recorded and
 raised as ModelMissingError by get() when a stage actually needs it.
 """
 
+import gc
 from pathlib import Path
 from typing import Any, Callable
 
@@ -130,14 +135,23 @@ _LOADERS: dict[str, Callable[[], Any]] = {
 }
 
 
+# Only used for neutral-sounding calls (the end-of-call satisfied check in tone.py)
+_ON_DEMAND = frozenset({"emotion2vec_large"})
+
+
+def _load(name: str, loaded: dict[str, Any], errors: dict[str, str]) -> None:
+    try:
+        loaded[name] = _LOADERS[name]()
+    except Exception as exc:  # recorded, raised later by get()
+        errors[name] = str(exc) if isinstance(exc, ModelMissingError) else f"{type(exc).__name__}: {exc}"
+
+
 def _load_all() -> tuple[dict[str, Any], dict[str, str]]:
     loaded: dict[str, Any] = {}
     errors: dict[str, str] = {}
-    for name, loader in _LOADERS.items():
-        try:
-            loaded[name] = loader()
-        except Exception as exc:  # recorded, raised later by get()
-            errors[name] = str(exc) if isinstance(exc, ModelMissingError) else f"{type(exc).__name__}: {exc}"
+    for name in _LOADERS:
+        if name not in _ON_DEMAND:
+            _load(name, loaded, errors)
     return loaded, errors
 
 
@@ -145,9 +159,21 @@ _MODELS, _LOAD_ERRORS = _load_all()
 
 
 def get(name: str) -> Any:
+    if name in _ON_DEMAND and name not in _MODELS and name not in _LOAD_ERRORS:
+        _load(name, _MODELS, _LOAD_ERRORS)
     if name in _LOAD_ERRORS:
         raise ModelMissingError(f"model '{name}' unavailable: {_LOAD_ERRORS[name]}")
     return _MODELS[name]
+
+
+def release(name: str) -> None:
+    """Free an on-demand model; the next get() loads it again."""
+    if name in _ON_DEMAND and _MODELS.pop(name, None) is not None:
+        gc.collect()
+
+
+def is_loaded(name: str) -> bool:
+    return name in _MODELS
 
 
 def load_errors() -> dict[str, str]:

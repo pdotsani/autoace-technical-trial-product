@@ -97,27 +97,38 @@ def measure_emotions(
 ) -> tuple[list[dict[str, float]], list[dict[str, float]] | None, dict[str, float] | None]:
     """Per chunk: emotion2vec's native scores, plus tone probs if a tone classifier is installed.
 
-    Also emotion2vec_plus_large's native scores for the last chunk, if that model is installed.
+    Also emotion2vec_plus_large's native scores for the last chunk, but only when the tone so far
+    is neutral (the only case decide_tone uses them) and that model is installed. It is loaded
+    for this and, unless EMOTION2VEC_LARGE_KEEP_LOADED, freed again afterwards.
     """
     if total_seconds(segments) < config.TONE_MIN_SPEECH_SEC:
         return [], None, None
     clips = [_normalize_loudness(concat_segments(audio, chunk)) for chunk in build_chunks(segments)]
     emotion2vec = models.get("emotion2vec")
     classifier = models.get("tone_classifier")
-    large = models.get("emotion2vec_large")
     outputs = [
         emotion2vec.generate(input=clip, granularity="utterance", extract_embedding=classifier is not None,
                              disable_pbar=True)[0]
         for clip in clips
     ]  # fmt: skip
     native = [_native_scores(o) for o in outputs]
+    probs = None
+    if classifier is not None:
+        proba = classifier.predict_proba(np.stack([o["feats"] for o in outputs]))
+        probs = [_classifier_probs(row, list(classifier.classes_)) for row in proba]
+
     end = None
-    if large is not None:
-        end = _native_scores(large.generate(input=clips[-1], granularity="utterance", disable_pbar=True)[0])
-    if classifier is None:
-        return native, None, end
-    proba = classifier.predict_proba(np.stack([o["feats"] for o in outputs]))
-    return native, [_classifier_probs(row, list(classifier.classes_)) for row in proba], end
+    if aggregate_tone(_chunk_probs(native, probs))[0] == "neutral":
+        large = models.get("emotion2vec_large")
+        if large is not None:
+            end = _native_scores(large.generate(input=clips[-1], granularity="utterance", disable_pbar=True)[0])
+        if not config.EMOTION2VEC_LARGE_KEEP_LOADED:
+            models.release("emotion2vec_large")
+    return native, probs, end
+
+
+def _chunk_probs(native: list[dict[str, float]], classifier_probs: list[dict[str, float]] | None) -> list[dict[str, float]]:
+    return classifier_probs or [baseline_tone_probs(list(n), list(n.values())) for n in native]
 
 
 def _margin(probs: dict[str, float], tone: str) -> float:
@@ -164,7 +175,7 @@ def decide_tone(
     classifier_probs: list[dict[str, float]] | None,
     end_scores: dict[str, float] | None = None,
 ) -> ToneResult:
-    chunk_probs = classifier_probs or [baseline_tone_probs(list(n), list(n.values())) for n in native]
+    chunk_probs = _chunk_probs(native, classifier_probs)
     if not chunk_probs:
         return ToneResult("neutral", "low", config.NO_SPEECH_CONFIDENCE)
     result = ToneResult(*aggregate_tone(chunk_probs))

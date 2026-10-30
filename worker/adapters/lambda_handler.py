@@ -32,7 +32,7 @@ _INIT_STARTED = time.perf_counter()
 import requests  # noqa: E402
 from pydantic import BaseModel, ValidationError, field_validator, model_validator  # noqa: E402
 
-from audioace import config, models, pipeline  # noqa: E402  (loads all models once per container)
+from audioace import config, models, pipeline  # noqa: E402  (loads the models once per container; emotion2vec_large on demand)
 
 INIT_SECONDS = round(time.perf_counter() - _INIT_STARTED, 3)
 
@@ -121,7 +121,8 @@ def _model_ids() -> dict[str, Any]:
         "vad": config.SILERO_VAD_ID,
         "dnsmos": config.DNSMOS_PATH.name,
         "emotion2vec": config.EMOTION2VEC_DIR.name,
-        "emotion2vec_large": config.EMOTION2VEC_LARGE_DIR.name if models.get("emotion2vec_large") else None,
+        # installed, not loaded: it loads only for neutral-sounding calls
+        "emotion2vec_large": config.EMOTION2VEC_LARGE_DIR.name if (config.EMOTION2VEC_LARGE_DIR / "model.pt").exists() else None,
         "unavailable": sorted(models.load_errors()),
     }
 

@@ -90,6 +90,7 @@ same two files are written to `./out/{run_id or "local"}/results/` and `.../metr
 | `MAX_AUDIO_MB` | 500 | largest audio file downloaded |
 | `TORCH_NUM_THREADS` | CPU count | torch / ONNX threads |
 | `CUSTOMER_CHANNEL` | 1 | customer channel in stereo files |
+| `EMOTION2VEC_LARGE_KEEP_LOADED` | 0 | 1 keeps emotion2vec_plus_large in memory after a neutral call (skips the ~1 s reload, but every call then needs memory for it) |
 
 **Running it without deploying** (`scripts/invoke_local.py` calls `handler()` in-process):
 
@@ -154,13 +155,13 @@ with `run_id`, `user_id` and a presigned `audio_url`.
 | Setting | Value | Why |
 |---|---|---|
 | Architecture | arm64 (match `--platform`) | cheaper per GB-second |
-| Memory | 8192 MB (10240 MB if too slow) | peak memory was 4.6 GB on the 172 s sample call, with both emotion models loaded. Lambda's CPU share grows with memory, and the run is CPU-bound (it used about 2.6 cores locally) |
+| Memory | 8192 MB (10240 MB if too slow) | peak memory was 4.6 GB on the 172 s sample call, measured when both emotion models were loaded at start-up (emotion2vec_plus_large now loads only for neutral calls; re-measure with `Max Memory Used` before lowering this). Lambda's CPU share grows with memory, and the run is CPU-bound (it used about 2.6 cores locally) |
 | Timeout | 900 s | a 172 s mono call took about 2 min on an M-series Mac, mostly speaker separation; Lambda CPUs may be slower. The handler stops 30 s early to write a failure |
 | Ephemeral storage (`/tmp`) | 2048 MB | downloads up to `MAX_AUDIO_MB` (500) plus library caches |
 | Environment | `BUCKET`, optionally `MAX_AUDIO_MB`, `TORCH_NUM_THREADS`, `CUSTOMER_CHANNEL` | see "Lambda worker" |
 
-Cold starts load every model during Lambda's init phase: 11 s in the container under the
-local emulator. Lambda allows 10 s for init; when it takes longer, Lambda reruns init as part
+Cold starts load every model except emotion2vec_plus_large during Lambda's init phase: 11 s in
+the container under the local emulator, measured before that model became on-demand. Lambda allows 10 s for init; when it takes longer, Lambda reruns init as part
 of the first invocation (counted against its timeout and billed), so the first call after a
 cold start is about 11 s slower but still works. The image is 6.2 GB unpacked (4.0 GB
 compressed), under Lambda's 10 GB limit; models are 3.7 GB of it and Python packages 2.2 GB.
@@ -283,7 +284,8 @@ silence is ignored unless `LONG_SILENCE_INCLUDE_EDGES=1`.
   ≥ `INTENSITY_MEDIUM_MARGIN` (0.1) → medium, otherwise low. A neutral tone gets `NEUTRAL_INTENSITY`
   (default medium), because the margin only measures how sure the model is that the call is neutral.
 - End-of-call check: if the result is neutral and `models/emotion2vec_large` exists,
-  emotion2vec_plus_large scores the last chunk. When its "happy" share (with `<unk>` left out)
+  emotion2vec_plus_large scores the last chunk. It is loaded only then (about 1 s) and freed
+  right after, unless `EMOTION2VEC_LARGE_KEEP_LOADED=1`, so other calls never hold it in memory. When its "happy" share (with `<unk>` left out)
   is at least `END_SATISFIED_HAPPY_MIN` (0.9), the tone becomes satisfied, intensity is kept,
   and that share is the tone probability. The threshold comes from three labelled calls only.
 - With under `TONE_MIN_SPEECH_SEC` of customer speech, the result is neutral / low.

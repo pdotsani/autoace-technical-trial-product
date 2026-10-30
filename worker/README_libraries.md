@@ -17,7 +17,7 @@ The models they load are downloaded by `scripts/download_models.py` during the D
 | **onnxruntime** | Microsoft DNSMOS P.835 (`sig_bak_ovr.onnx`) | Speech quality (SIG, OVRL) and background score (BAK) | `audio_quality`, `background_noise_*` |
 | **transformers** | `MIT/ast-finetuned-audioset-10-10-0.4593` (AST) | Labels sounds in the gaps between speech, and the "Television" score across the whole call | `background_noise_present`, `_type`, `_severity` |
 | **funasr** | emotion2vec_plus_base (`models/emotion2vec`) | Emotion scores for each 3–30 s chunk of customer speech | `emotional_tone`, `emotional_intensity`, `confidence` |
-| | emotion2vec_plus_large (`models/emotion2vec_large`, optional) | Scores only the customer's last chunk; a neutral call becomes satisfied when "happy" ≥ `END_SATISFIED_HAPPY_MIN` | `emotional_tone`, `confidence` |
+| | emotion2vec_plus_large (`models/emotion2vec_large`, optional, loaded on demand) | Scores only the customer's last chunk, only for calls whose tone is neutral; a neutral call becomes satisfied when "happy" ≥ `END_SATISFIED_HAPPY_MIN` | `emotional_tone`, `confidence` |
 | **joblib** + **scikit-learn** | `models/custom/tone_classifier.joblib` (optional, not present) | Loads a trained tone classifier over emotion2vec embeddings. Unused until one is trained; kept for now | `emotional_tone`, `emotional_intensity` |
 | **huggingface_hub** | — | Downloads the models at build time; at run time, transformers and pyannote read its offline cache (`models/hf`) | — |
 

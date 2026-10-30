@@ -50,6 +50,7 @@ ENV HOME=/tmp \
     FFMPEG_BIN=/usr/local/bin/ffmpeg
 
 # Fail the build, not the first invocation, if a model is missing or does not load
-RUN cd ${LAMBDA_TASK_ROOT} && python -c "from audioace import models; errors = models.load_errors(); print('models loaded'); assert not errors, errors"
+# (emotion2vec_large loads on demand at run time, so it is loaded here explicitly to check it)
+RUN cd ${LAMBDA_TASK_ROOT} && python -c "from audioace import models; assert models.get('emotion2vec_large') is not None, 'emotion2vec_large missing'; errors = models.load_errors(); print('models loaded'); assert not errors, errors"
 
 CMD ["adapters.lambda_handler.handler"]

@@ -145,5 +145,9 @@ NEUTRAL_INTENSITY = os.environ.get("NEUTRAL_INTENSITY", "medium")
 # "happy" at or above this ("<unk>" excluded). Set from 3 labelled calls only (call_002 0.72,
 # call_003 0.985). TODO: calibrate on dev set
 END_SATISFIED_HAPPY_MIN = _env_float("END_SATISFIED_HAPPY_MIN", 0.9)
+# emotion2vec_plus_large loads only for calls whose tone comes out neutral. By default it is freed
+# again right after, so it never shares memory with the other stages; 1 keeps it loaded, which
+# saves the reload on the next neutral call but needs that much more memory on every call.
+EMOTION2VEC_LARGE_KEEP_LOADED = os.environ.get("EMOTION2VEC_LARGE_KEEP_LOADED", "0") == "1"
 NO_SPEECH_CONFIDENCE = _env_float("NO_SPEECH_CONFIDENCE", 0.2)  # TODO: calibrate on dev set
 UNCERTAIN_CHANNEL_PENALTY = _env_float("UNCERTAIN_CHANNEL_PENALTY", 0.1)
