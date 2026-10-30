@@ -280,7 +280,7 @@ describe("GET /runs/{runId}", () => {
     expect(res.body.counts).toEqual({ total: 5, done: 1, failed: 1, skipped: 2, processing: 1 });
     expect(res.body.complete).toBe(false);
     expect(res.body.files).toEqual([
-      { name: "b call.wav", inCsv: true, status: "done", result: RESULT },
+      { name: "b call.wav", inCsv: true, status: "done", result: RESULT, expected: LABEL },
       { name: "a.wav", inCsv: true, status: "failed", result: { status: "failed", error: "decode failed: corrupt" }, error: "decode failed: corrupt" },
       { name: "c.wav", inCsv: true, status: "processing" },
       { name: "missing.wav", inCsv: true, status: "skipped", error: "missing audio" },

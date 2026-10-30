@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -72,6 +72,32 @@ describe("New batch page", () => {
     expect(await screen.findByRole("heading", { name: "Batch results" })).toBeInTheDocument();
     expect(screen.getByText("0 of 3 finished")).toBeInTheDocument();
     expect(screen.getAllByText("processing")).toHaveLength(3);
+  });
+
+  it("shows the CSV's labels in an Expected table on the run page", async () => {
+    const label = {
+      emotional_tone: "upset",
+      emotional_intensity: "high",
+      background_noise_present: false,
+      background_noise_type: "",
+      background_noise_severity: "none",
+      audio_quality: "clear",
+      speaker_overlap_present: false,
+      long_silence_present: false,
+    };
+    const csv = `name,result_json\ncall_001.ogg,"${JSON.stringify(label).replace(/"/g, '""')}"\ncall_002.ogg,\n`;
+    const { api } = testApi();
+    const created = await api.createRun({ files: [{ name: "labels.csv", size: csv.length }, { name: "call_001.ogg", size: 10 }, { name: "call_002.ogg", size: 10 }] });
+    for (const t of created.uploads) await api.upload(t, t.name.endsWith(".csv") ? file(t.name, csv) : file(t.name));
+    await api.validateRun(created.runId);
+    await api.analyzeRun(created.runId);
+
+    renderApp(api, `/runs/${created.runId}`);
+    const expected = await screen.findByRole("region", { name: "Expected results" });
+    const rows = within(expected).getAllByRole("row");
+    expect(within(rows[1]!).getByRole("rowheader")).toHaveTextContent("call_001.ogg");
+    expect(within(rows[1]!).getByText("Upset")).toBeInTheDocument();
+    expect(within(rows[2]!).getByRole("rowheader")).toHaveTextContent("call_002.ogg (no label)");
   });
 
   it("asks before replacing a previous batch", async () => {

@@ -1,6 +1,6 @@
 // Request and response bodies of every API route (api/src/routes.ts types its responses
 // against these with `satisfies`, so the two can't drift apart).
-import type { BatchReport } from "./validation";
+import type { BatchReport, Label } from "./validation";
 
 // --- Errors ------------------------------------------------------------------------------
 
@@ -27,7 +27,7 @@ export interface ApiErrorBody {
 
 // --- Shared pieces -----------------------------------------------------------------------
 
-/** The validation report as clients see it: labels (`expected`) stay server-side. */
+/** The validation report as clients see it: labels (`expected`) come back per file in RunView. */
 export type ValidationReport = Omit<BatchReport, "expected">;
 
 export type FileStatus = "done" | "failed" | "skipped" | "processing";
@@ -41,6 +41,7 @@ export interface FileView {
   status: FileStatus;
   result?: WorkerResult;
   error?: string; // skipped and failed files
+  expected?: Label; // the CSV's result_json label for this file, when it has one
 }
 
 export type RunCounts = Record<"total" | FileStatus, number>;

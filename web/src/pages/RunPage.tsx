@@ -123,6 +123,47 @@ function RunDetails({ view, refreshing }: { view: RunView; refreshing: boolean }
           </tbody>
         </table>
       </div>
+
+      {view.labeled && <ExpectedTable files={view.files.filter((f) => f.inCsv)} />}
+    </section>
+  );
+}
+
+/** The labels from the CSV's result_json column, in the same columns as the results. */
+function ExpectedTable({ files }: { files: RunView["files"] }) {
+  return (
+    <section className="stack" aria-labelledby="expected-heading">
+      <div>
+        <h2 id="expected-heading">Expected</h2>
+        <p className="muted">From the result_json column of the uploaded CSV.</p>
+      </div>
+      <div className="table-wrap" tabIndex={0} role="region" aria-label="Expected results">
+        <table className="table">
+          <thead>
+            <tr>
+              <th scope="col">File</th>
+              {RESULT_COLUMNS.map((c) => (
+                <th scope="col" key={c.key}>
+                  {c.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {files.map((f) => (
+              <tr key={f.name}>
+                <th scope="row" className="file-name">
+                  {f.name}
+                  {!f.expected && <span className="muted small"> (no label)</span>}
+                </th>
+                {RESULT_COLUMNS.map((c) => (
+                  <td key={c.key}>{f.expected ? resultCell(f.expected, c) : ""}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

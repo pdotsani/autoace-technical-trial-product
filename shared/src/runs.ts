@@ -30,7 +30,7 @@ export function runView(manifest: Manifest, results: Map<string, WorkerResult>, 
   const stale = submittedMs !== null && now.getTime() - submittedMs > staleAfterSec * 1000;
 
   const files = manifest.files.map((f): FileView => {
-    const base = { name: f.name, inCsv: f.inCsv };
+    const base = { name: f.name, inCsv: f.inCsv, ...(f.expected ? { expected: f.expected } : {}) };
     if (f.status === "skipped") return { ...base, status: "skipped", error: f.reason };
     if (f.invokeError) return { ...base, status: "failed", error: f.invokeError };
     const result = results.get(f.name);
