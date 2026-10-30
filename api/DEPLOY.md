@@ -74,10 +74,11 @@ are signed with this role, so its `s3:PutObject` / `s3:GetObject` are what they 
 
 ## 2. The Lambda function
 
-Build the bundle:
+Build the bundle. `api/` is an npm workspace, so install from the repo root (one lockfile
+there); esbuild bundles `@autoace/shared` into the zip.
 
 ```zsh
-npm ci
+(cd .. && npm ci)
 npm test
 npm run zip        # -> dist/function.zip
 ```

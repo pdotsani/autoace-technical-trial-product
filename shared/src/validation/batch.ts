@@ -15,8 +15,12 @@ export interface BatchOptions {
   maxCsvBytes?: number;
 }
 
+/** Why a file is left out, for counting; reason is the human-readable text. */
+export type SkipKind = "missing_audio" | "unmatched" | "ignored" | "invalid_name" | "too_large" | "empty";
+
 export interface SkippedFile {
   name: string;
+  kind: SkipKind;
   reason: string;
 }
 
@@ -58,7 +62,7 @@ export function validateBatch(
     if (isIgnoredEntry(file.name)) continue;
     const problem = nameProblem(file.name);
     if (problem) {
-      skipped.push({ name: file.name, reason: `invalid name: ${problem}` });
+      skipped.push({ name: file.name, kind: "invalid_name", reason: `invalid name: ${problem}` });
       continue;
     }
     if (seen.has(file.name)) {
@@ -71,13 +75,13 @@ export function validateBatch(
     if (ext === ".csv") {
       csvFiles.push(file);
     } else if (!supported.has(ext)) {
-      skipped.push({ name: file.name, reason: "ignored: unsupported type" });
+      skipped.push({ name: file.name, kind: "ignored", reason: "ignored: unsupported type" });
       skippedAudio.add(file.name);
     } else if (file.size > maxAudio) {
-      skipped.push({ name: file.name, reason: `larger than ${maxAudio / MB} MB` });
+      skipped.push({ name: file.name, kind: "too_large", reason: `larger than ${maxAudio / MB} MB` });
       skippedAudio.add(file.name);
     } else if (file.size === 0) {
-      skipped.push({ name: file.name, reason: "empty file" });
+      skipped.push({ name: file.name, kind: "empty", reason: "empty file" });
       skippedAudio.add(file.name);
     } else {
       audio.set(file.name, file);
@@ -121,13 +125,13 @@ export function validateBatch(
           matched.push(row.name);
         } else if (!skippedAudio.has(row.name)) {
           const near = audioByLower.get(row.name.toLowerCase())?.filter((n) => !rowNames.has(n));
-          skipped.push({ name: row.name, reason: "missing audio" + suggestion(near) });
+          skipped.push({ name: row.name, kind: "missing_audio", reason: "missing audio" + suggestion(near) });
         }
       }
       for (const name of audio.keys()) {
         if (rowNames.has(name)) continue;
         const near = rowsByLower.get(name.toLowerCase())?.filter((n) => !audio.has(n));
-        skipped.push({ name, reason: "unmatched audio: no CSV row" + suggestion(near) });
+        skipped.push({ name, kind: "unmatched", reason: "unmatched audio: no CSV row" + suggestion(near) });
       }
       if (parsed.hasResultColumn && !labeled) warnings.push("result_json column is empty: batch is unlabeled");
       if (matched.length === 0 && blocking.length === 0) blocking.push("no audio file matches a CSV row");

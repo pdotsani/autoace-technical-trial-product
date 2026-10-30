@@ -1,0 +1,21 @@
+{
+  "name": "autoace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AutoAce: shared code, API Lambda and web dashboard (npm workspaces; the Python worker lives in worker/)",
+  "workspaces": [
+    "shared",
+    "api",
+    "web"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "gen:schema": "npm run gen:schema -w shared",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "npm test --workspaces",
+    "lint": "npm run lint -w web",
+    "dev": "npm run dev -w web"
+  }
+}

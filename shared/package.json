@@ -1,0 +1,28 @@
+{
+  "name": "@autoace/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Code shared by api/ and web/: result schema, batch validation, API types",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts",
+    "./validation": "./src/validation/index.ts",
+    "./api-types": "./src/api-types.ts",
+    "./runs": "./src/runs.ts"
+  },
+  "scripts": {
+    "gen:schema": "node scripts/gen-schema.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "csv-parse": "^7.0.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "json-schema-to-zod": "^2.8.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

@@ -1,27 +1,42 @@
-# AutoAce call audio analysis (backend)
+# AutoAce call audio analysis
 
 Backend for analyzing customer call recordings. An API Lambda accepts uploads and starts a
 run; for each audio file it invokes the worker Lambda, which analyzes the file with a hybrid
 pipeline of audio models (no LLM) and writes a JSON result matching
 `shared/schema/result.schema.json` to S3: the customer's tone and intensity, background
-noise, audio quality, speaker overlap and long silences. The frontend lives in a separate repo.
+noise, audio quality, speaker overlap and long silences. The web dashboard in `web/` uploads
+batches and shows the results.
 
 ## Layout
 
 ```
 worker/                  Python hybrid worker: the analysis pipeline and its Lambda adapter
 api/                     API Lambda (TypeScript): runs, uploads, validation, worker fan-out, results
+web/                     dashboard (Vite + React): upload a batch, watch progress, download results
+shared/                  @autoace/shared: generated Zod schema, batch validation, API types, run status rules
+  schema/                result.schema.json, the output contract shared by worker, API and web
 docs/                    memo and reports, coming later
-shared/schema/           result.schema.json, the output contract shared by worker, API and frontend
 experiments/
   llm_baseline/          archived LLM experiment (Qwen2.5-Omni-7B); not used in production
+package.json             npm workspaces: shared, api, web (one lockfile at the root)
 README.md
 .gitignore
 ```
 
 ## Setup
 
-TODO. For the worker, see [worker/README_worker.md](worker/README_worker.md#run-locally).
+TypeScript packages (Node 22 or later), from the repo root:
+
+```zsh
+npm install
+npm run dev          # the dashboard on http://localhost:5173 with the mock API
+npm test             # shared, api and web
+npm run typecheck
+npm run gen:schema   # after changing shared/schema/result.schema.json
+```
+
+Dashboard details: [web/README.md](web/README.md). For the worker (Python), see
+[worker/README_worker.md](worker/README_worker.md#run-locally).
 
 ## Deploy worker
 

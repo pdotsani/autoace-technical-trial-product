@@ -105,8 +105,8 @@ describe("validateBatch: matching", () => {
     const report = validateBatch({ files: [csvFile, ...audio("a.wav", "extra.wav")], csvText: "name\na.wav\ngone.wav\n" });
     expect(report.matched).toEqual(["a.wav"]);
     expect(report.skipped).toEqual([
-      { name: "gone.wav", reason: "missing audio" },
-      { name: "extra.wav", reason: "unmatched audio: no CSV row" },
+      { name: "gone.wav", kind: "missing_audio", reason: "missing audio" },
+      { name: "extra.wav", kind: "unmatched", reason: "unmatched audio: no CSV row" },
     ]);
   });
 
@@ -114,8 +114,8 @@ describe("validateBatch: matching", () => {
     const report = validateBatch({ files: [csvFile, ...audio("Call 001.WAV", "b.wav")], csvText: "name\ncall 001.wav\nb.wav\n" });
     expect(report.matched).toEqual(["b.wav"]);
     expect(report.skipped).toEqual([
-      { name: "call 001.wav", reason: 'missing audio (did you mean "Call 001.WAV"? names must match exactly)' },
-      { name: "Call 001.WAV", reason: 'unmatched audio: no CSV row (did you mean "call 001.wav"? names must match exactly)' },
+      { name: "call 001.wav", kind: "missing_audio", reason: 'missing audio (did you mean "Call 001.WAV"? names must match exactly)' },
+      { name: "Call 001.WAV", kind: "unmatched", reason: 'unmatched audio: no CSV row (did you mean "call 001.wav"? names must match exactly)' },
     ]);
   });
 
@@ -132,13 +132,13 @@ describe("validateBatch: files", () => {
       ...audio("a.wav", "notes.txt", ".DS_Store", "__MACOSX/._a.wav", ".hidden.wav"),
     ];
     const report = validateBatch({ files, csvText: "name\na.wav\n" });
-    expect(report.skipped).toEqual([{ name: "notes.txt", reason: "ignored: unsupported type" }]);
+    expect(report.skipped).toEqual([{ name: "notes.txt", kind: "ignored", reason: "ignored: unsupported type" }]);
     expect(report.matched).toEqual(["a.wav"]);
   });
 
   it("rejects names with path separators and keeps other names exactly", () => {
     const report = validateBatch({ files: [csvFile, ...audio("dir\\a.wav", " spaced name .ogg")], csvText: "name\n spaced name .ogg\n" });
-    expect(report.skipped).toEqual([{ name: "dir\\a.wav", reason: "invalid name: name must not contain '/' or '\\'" }]);
+    expect(report.skipped).toEqual([{ name: "dir\\a.wav", kind: "invalid_name", reason: "invalid name: name must not contain '/' or '\\'" }]);
     expect(report.matched).toEqual([" spaced name .ogg"]);
   });
 
@@ -147,7 +147,7 @@ describe("validateBatch: files", () => {
       { files: [{ name: "labels.csv", size: 10 }, { name: "big.wav", size: 3 * 1024 * 1024 }, ...audio("a.wav")], csvText: "name\nbig.wav\na.wav\n" },
       { maxAudioBytes: 2 * 1024 * 1024 },
     );
-    expect(report.skipped).toEqual([{ name: "big.wav", reason: "larger than 2 MB" }]);
+    expect(report.skipped).toEqual([{ name: "big.wav", kind: "too_large", reason: "larger than 2 MB" }]);
     expect(report.matched).toEqual(["a.wav"]);
 
     const big = validateBatch({ files: [{ name: "labels.csv", size: 2 * 1024 * 1024 }, ...audio("a.wav")] }, { maxCsvBytes: 1024 * 1024 });

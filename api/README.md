@@ -47,19 +47,29 @@ runs/{userId}/{runId}/outputs/results_{runId}.csv|json
 src/index.ts         Lambda handler: routing, errors, one JSON log line per request
 src/router.ts        method + path matching for the six routes
 src/routes.ts        route handlers
-src/manifest.ts      manifest types and the status rules (done / failed / skipped / processing / timed out)
+src/manifest.ts      re-exports the manifest types and status rules from @autoace/shared/runs
 src/store.ts         S3 key layout and helpers (list, delete, get/put JSON, presign)
 src/config.ts        env vars, validated with zod at cold start
 src/auth.ts          getUserId (dev mode; JWT TODO)
-src/schema.ts        GENERATED from shared/schema/result.schema.json (npm run gen:schema)
-src/validation/      batch validation: pure TypeScript, no AWS imports, reusable by the frontend
+```
+
+Shared with the web app, in [`shared/`](../shared) (`@autoace/shared`):
+
+```
+shared/src/api-types.ts   request and response types of every route (routes.ts checks its bodies with `satisfies`)
+shared/src/runs.ts        manifest, status rules (done / failed / skipped / processing / timed out), output rows
+shared/src/validation/    batch and CSV validation: pure TypeScript, no AWS imports
+shared/src/schema.ts      GENERATED from shared/schema/result.schema.json (npm run gen:schema)
 ```
 
 ## Scripts
 
+`api/` is an npm workspace: install from the repo root, which has the one lockfile.
+
 ```bash
-npm ci
-npm run gen:schema   # regenerate src/schema.ts after changing shared/schema/result.schema.json
+npm ci                          # at the repo root
+npm run gen:schema              # at the root: regenerate shared/src/schema.ts after changing result.schema.json
+cd api
 npm run typecheck
 npm test             # vitest; S3 and Lambda mocked with aws-sdk-client-mock
 npm run build        # esbuild -> dist/index.mjs

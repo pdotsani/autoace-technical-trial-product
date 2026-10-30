@@ -157,7 +157,7 @@ describe("POST /runs", () => {
     expect(upload.headers).toEqual({ "Content-Type": "audio/wav" });
     expect(upload.url).toContain(`runs/${USER}/${res.body.runId}/input/a.wav`);
     expect(upload.url).toContain("X-Amz-Signature=");
-    expect(res.body.report.skipped).toEqual([{ name: "notes.txt", reason: "ignored: unsupported type" }]);
+    expect(res.body.report.skipped).toEqual([{ name: "notes.txt", kind: "ignored", reason: "ignored: unsupported type" }]);
   });
 
   it("rejects a batch with blocking errors", async () => {

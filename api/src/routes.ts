@@ -5,7 +5,7 @@ import { z } from "zod";
 import { lambda } from "./aws";
 import { config, MB } from "./config";
 import { ApiError, checkBody } from "./http";
-import { isProcessing, runView, type Manifest, type ManifestFile, type RunView, type WorkerResult } from "./manifest";
+import { isProcessing, manifestFiles, outputRows, runView, type Manifest, type RunView, type WorkerResult } from "./manifest";
 import { isRunId, newRunId, runCreatedAt } from "./runId";
 import {
   deletePrefix,
@@ -22,7 +22,17 @@ import {
   putJson,
   putText,
 } from "./store";
-import { extensionOf, isIgnoredEntry, nameProblem, parseManifestCsv, validateBatch, type BatchReport } from "./validation";
+import type {
+  AnalyzeRunResponse,
+  CreateRunResponse,
+  GetOutputResponse,
+  GetRunResponse,
+  ListRunsResponse,
+  RunSummary,
+  ValidateRunResponse,
+  ValidationReport,
+} from "@autoace/shared/api-types";
+import { extensionOf, isIgnoredEntry, nameProblem, validateBatch, type BatchReport } from "@autoace/shared/validation";
 
 export interface RouteContext {
   userId: string;
@@ -58,7 +68,7 @@ function batchOptions() {
 }
 
 /** The report as returned to clients: labels stay server-side in the manifest. */
-function publicReport({ expected: _expected, ...report }: BatchReport) {
+function publicReport({ expected: _expected, ...report }: BatchReport): ValidationReport {
   return report;
 }
 
@@ -137,7 +147,7 @@ export async function createRun(ctx: RouteContext): Promise<RouteResult> {
       return { name: f.name, url, headers: { "Content-Type": contentType } };
     }),
   );
-  return { status: 201, body: { runId, uploads, report: publicReport(report) } };
+  return { status: 201, body: { runId, uploads, report: publicReport(report) } satisfies CreateRunResponse };
 }
 
 // --- POST /runs/{runId}/validate ---------------------------------------------------------
@@ -167,30 +177,7 @@ export async function validateRun(ctx: RouteContext): Promise<RouteResult> {
     submittedAt: null,
   };
   await putJson(keys.manifest(ctx.userId, runId), manifest);
-  return { status: 200, body: publicReport(report) };
-}
-
-/** CSV rows in CSV order (valid or skipped), then skipped files that have no CSV row. */
-function manifestFiles(report: BatchReport, csvText: string | undefined): ManifestFile[] {
-  const matched = new Set(report.matched);
-  const reasons = new Map(report.skipped.map((s) => [s.name, s.reason]));
-  const files: ManifestFile[] = [];
-  const listed = new Set<string>();
-  const parsed = csvText !== undefined && report.blocking.length === 0 ? parseManifestCsv(csvText) : null;
-  for (const row of parsed?.ok ? parsed.rows : []) {
-    if (row.name === "" || listed.has(row.name)) continue;
-    listed.add(row.name);
-    if (matched.has(row.name)) {
-      const expected = report.expected[row.name];
-      files.push({ name: row.name, status: "valid", inCsv: true, ...(expected ? { expected } : {}) });
-    } else {
-      files.push({ name: row.name, status: "skipped", inCsv: true, reason: reasons.get(row.name) ?? "missing audio" });
-    }
-  }
-  for (const s of report.skipped) {
-    if (!listed.has(s.name)) files.push({ name: s.name, status: "skipped", inCsv: false, reason: s.reason });
-  }
-  return files;
+  return { status: 200, body: publicReport(report) satisfies ValidateRunResponse };
 }
 
 // --- POST /runs/{runId}/analyze ----------------------------------------------------------
@@ -238,14 +225,14 @@ export async function analyzeRun(ctx: RouteContext): Promise<RouteResult> {
       runId,
       submittedAt: manifest.submittedAt,
       counts: { submitted: valid.length - failed, invokeFailed: failed, skipped: manifest.files.length - valid.length },
-    },
+    } satisfies AnalyzeRunResponse,
   };
 }
 
 // --- GET /runs/{runId} -------------------------------------------------------------------
 
 export async function getRun(ctx: RouteContext): Promise<RouteResult> {
-  return { status: 200, body: await loadView(ctx.userId, runIdParam(ctx), ctx.now) };
+  return { status: 200, body: (await loadView(ctx.userId, runIdParam(ctx), ctx.now)) satisfies GetRunResponse };
 }
 
 // --- GET /runs/{runId}/output?format=csv|json[&partial=true] -----------------------------
@@ -262,7 +249,7 @@ export async function getOutput(ctx: RouteContext): Promise<RouteResult> {
   }
 
   // Exactly the given CSV's rows, in its order: uploads it doesn't list are left out
-  const rows = view.files.filter((f) => f.inCsv).map((f) => ({ name: f.name, result: outputResult(f) }));
+  const rows = outputRows(view);
   const body =
     format === "csv"
       ? stringify([["name", "result_json"], ...rows.map((r) => [r.name, JSON.stringify(r.result)])], { record_delimiter: "\r\n" })
@@ -272,27 +259,14 @@ export async function getOutput(ctx: RouteContext): Promise<RouteResult> {
   await putText(key, body, contentType);
 
   const url = await presignGet(key, config.DOWNLOAD_URL_EXPIRES, { filename: `results_${runId}.${format}`, contentType });
-  return { status: 200, body: { url, complete: view.complete } };
-}
-
-function outputResult(f: RunView["files"][number]): Record<string, unknown> {
-  switch (f.status) {
-    case "done":
-      return f.result!;
-    case "failed":
-      return { status: "failed", error: f.error ?? "" };
-    case "skipped":
-      return { status: "skipped", error: f.error ?? "" };
-    case "processing":
-      return { status: "processing", error: "result not ready" };
-  }
+  return { status: 200, body: { url, complete: view.complete } satisfies GetOutputResponse };
 }
 
 // --- GET /runs ---------------------------------------------------------------------------
 
 export async function listRuns(ctx: RouteContext): Promise<RouteResult> {
   const runIds = (await listFolders(keys.user(ctx.userId))).filter(isRunId).sort().reverse();
-  const runs = await mapLimit(runIds, READ_CONCURRENCY, async (runId) => {
+  const runs = await mapLimit(runIds, READ_CONCURRENCY, async (runId): Promise<RunSummary> => {
     const manifest = (await getJson<Manifest>(keys.manifest(ctx.userId, runId)))?.value;
     if (!manifest) return { runId, createdAt: runCreatedAt(runId), validated: false, submitted: false, complete: false };
     const view = runView(manifest, await loadResults(ctx.userId, runId), ctx.now, config.STALE_AFTER_SEC);
@@ -306,5 +280,5 @@ export async function listRuns(ctx: RouteContext): Promise<RouteResult> {
       complete: view.complete,
     };
   });
-  return { status: 200, body: { runs } };
+  return { status: 200, body: { runs } satisfies ListRunsResponse };
 }
