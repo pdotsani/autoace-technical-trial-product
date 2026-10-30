@@ -65,49 +65,33 @@ JavaScript bundle and anyone can read it, so only public values go here.
 `VITE_AUTH_MODE` is separate from `VITE_API_MODE`. An API with `AUTH_MODE=dev` ignores the
 token, so mock sign-in works against it; an API with `AUTH_MODE=jwt` needs `supabase`.
 
-## What still needs connecting
+## Against the deployed API
 
-1. **The live API.** Set `VITE_API_MODE=live` and `VITE_API_URL`. Every request sends
-   `Authorization: Bearer <token>`. Uploads PUT straight to S3 with the presigned URL and
-   exactly the headers `POST /runs` returns.
-2. **CORS.** The API's CORS configuration must allow the dashboard's origin, and so must the
-   bucket's CORS rule, for the presigned PUTs. Both are already set for
-   `http://localhost:5173` (`api/DEPLOY.md` steps 3 and 4). Add the CloudFront domain when
-   it exists. The dev server uses port 5173 with `strictPort`, so a busy port fails instead of
-   moving to an origin CORS doesn't allow.
-3. **Supabase auth.** `SupabaseAuthProvider` in `src/auth/AuthContext.tsx` signs in with
-   `signInWithPassword` and sends the session's access token. Set `VITE_AUTH_MODE=supabase`
-   plus `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. There is no sign-up page: accounts
-   are created in the Supabase dashboard.
-4. **API auth.** Set `AUTH_MODE=jwt` and `SUPABASE_URL` on the API Lambda. It then verifies
-   the token itself (`api/src/auth.ts`). Until then, anyone with the API URL can use it.
+Set these in `.env.local` (Vite reads it at start-up, so restart `npm run dev` after a change):
 
-## Deployment to S3 + CloudFront (documented only, not set up)
+```zsh
+VITE_API_MODE=live
+VITE_API_URL=https://<api-id>.execute-api.us-east-2.amazonaws.com
+VITE_AUTH_MODE=supabase
+VITE_SUPABASE_URL=https://<project-ref>.supabase.co
+VITE_SUPABASE_ANON_KEY=<anon or publishable key>
+```
 
-The build is static files (`web/dist`). The plan:
+- **Auth.** `SupabaseAuthProvider` (`src/auth/AuthContext.tsx`) signs in with
+  `signInWithPassword` and sends the session's access token as `Authorization: Bearer`.
+  There is no sign-up page: users are created in the Supabase dashboard.
+- **CORS.** The API and the audio bucket both allow `http://localhost:5173`. The dev server
+  uses that port with `strictPort`, so a busy port fails instead of moving to an origin CORS
+  doesn't allow.
+- **No Mock API badge.** If the header still shows **Mock API**, `VITE_API_MODE` isn't
+  `live`. An unknown value (a typo, or `supabase`) falls back to mock without an error, and
+  the mock fails the last file of each batch on purpose.
 
-1. Build with the live settings:
-   ```zsh
-   VITE_API_MODE=live VITE_API_URL="${API_URL}" VITE_AUTH_MODE=supabase \
-   VITE_SUPABASE_URL="${SUPABASE_URL}" VITE_SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY}" \
-     npm run build -w web
-   ```
-2. Create a **private** S3 bucket for the site (not the audio bucket), and a CloudFront
-   distribution in front of it, using Origin Access Control. The bucket policy allows only
-   that distribution. Set the default root object to `index.html`.
-3. **Single-page app routing.** `/runs/<id>` is not a file in the bucket. Add custom error
-   responses that map 403 and 404 to `/index.html` with status 200, so React Router handles
-   the path.
-4. Upload. Hashed assets are cached for a year; `index.html` is always revalidated:
-   ```zsh
-   aws s3 sync web/dist "s3://${SITE_BUCKET}" --delete --exclude index.html \
-     --cache-control "public,max-age=31536000,immutable"
-   aws s3 cp web/dist/index.html "s3://${SITE_BUCKET}/index.html" --cache-control "no-cache"
-   aws cloudfront create-invalidation --distribution-id "${DISTRIBUTION_ID}" --paths /index.html
-   ```
-5. Add `https://<distribution>.cloudfront.net` (or the custom domain) to the API's CORS
-   `AllowOrigins`, to the audio bucket's CORS `AllowedOrigins`, and to Supabase's allowed
-   site URLs.
+## Deployment
+
+The dashboard is served from a private S3 bucket through CloudFront. Creating the bucket and
+distribution, the build command, the upload and the CORS origins are in the root
+[README](../README.md#5-dashboard-s3--cloudfront).
 
 ## Code
 

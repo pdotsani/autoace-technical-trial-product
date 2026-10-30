@@ -12,7 +12,11 @@ export WORKER_FUNCTION_NAME=autoace-worker
 export API_FUNCTION_NAME=autoace-api
 export ROLE_NAME=autoace-api-lambda
 export DEV_ORIGIN=http://localhost:5173
+export SUPABASE_URL=https://<project-ref>.supabase.co
 ```
+
+This covers the API only. The whole setup (audio bucket, worker, Supabase, dashboard
+hosting) is in the root [README](../README.md#deploy-to-aws).
 
 > **Warning.** While `AUTH_MODE=dev` the API has no authentication: anyone with its URL can
 > create runs, upload files and read results (all as `DEV_USER_ID`). Keep the URL private, and
@@ -87,6 +91,9 @@ npm run zip        # -> dist/function.zip
 
 Environment variables. These go in a JSON file because `SUPPORTED_AUDIO` contains commas,
 which the CLI's `Key=Value` shorthand can't hold. `AWS_REGION` is set by Lambda; don't add it.
+`AUTH_MODE=jwt` requires a Supabase access token on every request (`src/auth.ts`); for a
+throwaway test without Supabase, `"AUTH_MODE": "dev"` with `"DEV_USER_ID": "dev-user"`
+makes the API open to anyone with its URL.
 
 ```zsh
 cat > /tmp/autoace-api-env.json <<EOF
@@ -94,8 +101,8 @@ cat > /tmp/autoace-api-env.json <<EOF
   "Variables": {
     "BUCKET": "${BUCKET}",
     "WORKER_FUNCTION_NAME": "${WORKER_FUNCTION_NAME}",
-    "AUTH_MODE": "dev",
-    "DEV_USER_ID": "dev-user",
+    "AUTH_MODE": "jwt",
+    "SUPABASE_URL": "${SUPABASE_URL}",
     "PUT_URL_EXPIRES": "900",
     "WORKER_URL_EXPIRES": "3600",
     "DOWNLOAD_URL_EXPIRES": "900",
@@ -154,8 +161,14 @@ aws lambda get-account-settings --query 'AccountLimit.ConcurrentExecutions'
 
 ## 3. API Gateway HTTP API
 
-CORS is configured here, on the API, not in the Lambda: the function returns no CORS headers,
-and API Gateway answers browser preflight (`OPTIONS`) requests itself.
+CORS is configured here, on the API, not in the Lambda: the function returns no CORS headers.
+Browser preflights (`OPTIONS`) get a 204 with API Gateway's CORS headers, whether API Gateway
+answers them or the Lambda does (it returns 204 for `OPTIONS`).
+
+Create the API as below, **without** `--target`. That flag ("quick create") also makes an
+AWS-managed `$default` route that can't be deleted or changed afterwards. It forwards every
+request, preflights included, to the Lambda. The Lambda checks the token itself, so such a
+route doesn't bypass auth, but the explicit routes below are the intended setup.
 
 ```zsh
 export API_ID=$(aws apigatewayv2 create-api --name "${API_FUNCTION_NAME}" --protocol-type HTTP \
@@ -214,18 +227,33 @@ When the dashboard gets a real domain, add it to `AllowOrigins` (step 3, with
 
 ## 5. End-to-end check
 
-With a folder holding the three calls and their CSV:
+With `AUTH_MODE=jwt`, get an access token for a Supabase user first. `read -s` keeps the
+password out of the screen and the shell history; tokens last an hour by default.
 
 ```zsh
-API_URL="${API_URL}" scripts/e2e.sh ~/Downloads/autoace-batch
+ANON_KEY=<the project's anon or publishable key>
+read "EMAIL?Email: "; read -s "PASSWORD?Password: "; echo
+TOKEN=$(curl -s "${SUPABASE_URL}/auth/v1/token?grant_type=password" \
+  -H "apikey: ${ANON_KEY}" -H "Content-Type: application/json" \
+  -d "{\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\"}" | jq -r .access_token)
+unset PASSWORD
+
+curl -s "${API_URL}/runs" -H "Authorization: Bearer ${TOKEN}" | jq
+```
+
+Then, with a folder holding the calls and their CSV:
+
+```zsh
+API_URL="${API_URL}" TOKEN="${TOKEN}" scripts/e2e.sh ~/Downloads/autoace-batch
 ```
 
 It prints the validation report and the counts every 5 s, then writes
 `out/results_<runId>.csv`. Each row's `result_json` should equal the worker's
-`runs/dev-user/<runId>/results/<name>.json`:
+`runs/<userId>/<runId>/results/<name>.json`, where `<userId>` is the Supabase user ID (the
+token's `sub`), or `DEV_USER_ID` in dev mode:
 
 ```zsh
-aws s3 cp "s3://${BUCKET}/runs/dev-user/<runId>/results/call_001.ogg.json" -
+aws s3 cp "s3://${BUCKET}/runs/<userId>/<runId>/results/call_001.ogg.json" -
 ```
 
 ## Logs

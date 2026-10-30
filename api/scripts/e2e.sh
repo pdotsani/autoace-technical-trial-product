@@ -2,8 +2,9 @@
 # End-to-end run against a deployed API: create a run, upload a folder, validate, analyze,
 # poll until complete, download the results CSV to ./out/.
 #
-# Usage: API_URL=https://<api-id>.execute-api.us-east-2.amazonaws.com scripts/e2e.sh <folder>
+# Usage: API_URL=https://<api-id>.execute-api.us-east-2.amazonaws.com [TOKEN=<jwt>] scripts/e2e.sh <folder>
 #   <folder> holds audio files and exactly one CSV (name[,result_json]).
+#   TOKEN: a Supabase access token, required when the API runs with AUTH_MODE=jwt.
 # Needs: curl, jq. Optional: POLL_SEC (default 5), MAX_WAIT_SEC (default 1200).
 set -euo pipefail
 
@@ -12,6 +13,8 @@ FOLDER="${1:?usage: scripts/e2e.sh <folder with audio files and one CSV>}"
 POLL_SEC="${POLL_SEC:-5}"
 MAX_WAIT_SEC="${MAX_WAIT_SEC:-1200}"
 API_URL="${API_URL%/}"
+AUTH=()
+[[ -n "${TOKEN:-}" ]] && AUTH=(-H "Authorization: Bearer ${TOKEN}")
 [[ -d "${FOLDER}" ]] || { echo "not a folder: ${FOLDER}" >&2; exit 1; }
 
 content_type() {
@@ -26,9 +29,9 @@ content_type() {
 api() {
   local method="$1" path="$2" body="${3:-}" response status
   if [[ -n "${body}" ]]; then
-    response="$(curl -sS -w '\n%{http_code}' -X "${method}" -H 'Content-Type: application/json' -d "${body}" "${API_URL}${path}")"
+    response="$(curl -sS -w '\n%{http_code}' -X "${method}" ${AUTH[@]+"${AUTH[@]}"} -H 'Content-Type: application/json' -d "${body}" "${API_URL}${path}")"
   else
-    response="$(curl -sS -w '\n%{http_code}' -X "${method}" "${API_URL}${path}")"
+    response="$(curl -sS -w '\n%{http_code}' -X "${method}" ${AUTH[@]+"${AUTH[@]}"} "${API_URL}${path}")"
   fi
   status="${response##*$'\n'}"
   response="${response%$'\n'*}"
