@@ -19,6 +19,8 @@
   --busy: #2556d9;
   --busy-bg: #e7eefc;
   --muted-bg: #eceef2;
+  --conf-low: #f9d49a; /* confidence shading, 0% ... */
+  --conf-high: #a3d9b4; /* ... to 100% */
   --radius: 8px;
   --shadow: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 3px rgb(16 24 40 / 0.08);
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -47,6 +49,8 @@
     --busy: #8eaeff;
     --busy-bg: #18244a;
     --muted-bg: #252b34;
+    --conf-low: #5a3d08;
+    --conf-high: #1c5532;
     --shadow: none;
   }
 }
@@ -521,6 +525,55 @@ progress {
   font-family: var(--mono);
   font-size: 0.85rem;
 }
+.table tfoot > tr > * {
+  border-top: 1px solid var(--border);
+  border-bottom: none;
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+/* --- Results compared with the CSV's labels ------------------------------------------ */
+
+.cell-match {
+  background: var(--ok-bg);
+}
+.cell-mismatch {
+  background: var(--bad-bg);
+}
+.expected-hint {
+  display: block;
+  font-size: 0.8em;
+  color: var(--bad);
+}
+.cell-confidence {
+  background: var(--surface-2); /* browsers without color-mix */
+  background: color-mix(in oklab, var(--conf-low), var(--conf-high) calc(var(--confidence) * 100%));
+  font-variant-numeric: tabular-nums;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.swatch {
+  display: inline-block;
+  width: 1.5em;
+  height: 0.9em;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+.swatch-confidence {
+  background: linear-gradient(90deg, var(--conf-low), var(--conf-high));
+}
+
 .table .reason {
   white-space: normal;
   min-width: 12rem;

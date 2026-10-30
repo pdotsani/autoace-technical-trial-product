@@ -46,6 +46,20 @@ export function resultCell(result: WorkerResult | undefined, column: (typeof RES
   return result ? column.format(result[column.key]) : "";
 }
 
+/** The fields compared with a file's label. Confidence isn't: labels rarely have one, and it's a score, not an answer. */
+export const COMPARED_COLUMNS = RESULT_COLUMNS.filter((c) => c.key !== "confidence");
+
+/** Whether the result agrees with the label on one field. The free-text noise type ignores case and outer spaces. */
+export function fieldMatches(result: WorkerResult, expected: WorkerResult, key: keyof Result): boolean {
+  const [actual, wanted] = [result[key], expected[key]];
+  if (typeof actual === "string" && typeof wanted === "string") return actual.trim().toLowerCase() === wanted.trim().toLowerCase();
+  return actual === wanted;
+}
+
+export function countMatches(result: WorkerResult, expected: WorkerResult): number {
+  return COMPARED_COLUMNS.filter((c) => fieldMatches(result, expected, c.key)).length;
+}
+
 export function runStatus(run: RunSummary): { tone: ChipTone; label: string } {
   if (!run.validated) return { tone: "muted", label: "Not validated" };
   if (!run.submitted) return { tone: "muted", label: "Not started" };

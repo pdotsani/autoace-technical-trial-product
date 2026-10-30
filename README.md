@@ -308,8 +308,8 @@ with a token ([api/DEPLOY.md](api/DEPLOY.md#5-end-to-end-check)). Logs:
 2. **Prepare the files.** One folder with the audio files (`.wav`, `.mp3`, `.ogg`, `.m4a`,
    `.flac`; up to 500 MB each) and exactly one CSV listing them. The `name` column must match
    each file name exactly. The optional `result_json` column holds the expected result as
-   JSON in the result schema (`confidence` may be left out); labeled rows show up in an
-   Expected table below the results. Files the CSV doesn't list are skipped.
+   JSON in the result schema (`confidence` may be left out); labeled files are compared with
+   their results (step 7). Files the CSV doesn't list are skipped.
 
    ```csv
    name,result_json
@@ -332,6 +332,12 @@ with a token ([api/DEPLOY.md](api/DEPLOY.md#5-end-to-end-check)). Logs:
 7. **Watch it run.** The page refreshes every 3 seconds. Each file is `processing`, `done`,
    `failed` (with the reason) or `skipped`. A file usually takes one to a few minutes, longer
    on a cold start; one with no result after 16 minutes is marked `failed` / `timed out`.
+   Confidence is shaded from amber (0%) to green (100%). In a labeled batch, each finished
+   labeled file is compared with its label: matching fields are green, differing ones red
+   with the expected value underneath, the **Matches** column counts matching fields (8 are
+   compared, not confidence), and a **Matched** row totals each field across the labeled
+   files. The noise type is free text, so case and outer spaces are ignored. The labels
+   themselves are listed in an **Expected** table below.
 8. **Download the results.** When every file has finished, **Download CSV** gives
    `name,result_json` rows in the CSV's order, and **Download JSON** the same as a list.
    Before that, **Download partial results (CSV)** gives what's done so far. Download links
@@ -383,7 +389,8 @@ and `__MACOSX` entries are dropped without a report.
 - An all-empty `result_json` column makes the batch unlabeled.
 
 Valid labels are stored in the run manifest as `expected`, returned per file by
-`GET /runs/{runId}` for the Expected table, and never sent to the worker. Tests:
+`GET /runs/{runId}` for the results comparison and the Expected table, and never sent to
+the worker. Tests:
 `shared/tests/validation.test.ts`, `npm test -w shared`.
 
 The worker's results for the three labeled sample calls are checked separately by

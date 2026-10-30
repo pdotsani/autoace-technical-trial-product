@@ -100,6 +100,45 @@ describe("New batch page", () => {
     expect(within(rows[2]!).getByRole("rowheader")).toHaveTextContent("call_002.ogg (no label)");
   });
 
+  it("highlights results that match or differ from the label, and shades confidence", async () => {
+    // The mock's result for call_001 matches this label except speaker overlap (Yes, labeled No)
+    const label = {
+      emotional_tone: "upset",
+      emotional_intensity: "high",
+      background_noise_present: false,
+      background_noise_type: "",
+      background_noise_severity: "none",
+      audio_quality: "clear",
+      speaker_overlap_present: false,
+      long_silence_present: false,
+    };
+    const csv = `name,result_json\ncall_001.ogg,"${JSON.stringify(label).replace(/"/g, '""')}"\ncall_002.ogg,\n`;
+    const { api, clock } = testApi();
+    const created = await api.createRun({ files: [{ name: "labels.csv", size: csv.length }, { name: "call_001.ogg", size: 10 }, { name: "call_002.ogg", size: 10 }] });
+    for (const t of created.uploads) await api.upload(t, t.name.endsWith(".csv") ? file(t.name, csv) : file(t.name));
+    await api.validateRun(created.runId);
+    await api.analyzeRun(created.runId);
+    clock.advance(30_000); // past every file's finish time
+
+    renderApp(api, `/runs/${created.runId}`);
+    const results = await screen.findByRole("region", { name: "Files and results" });
+    const [, labeled, unlabeled, totals] = within(results).getAllByRole("row");
+    const cells = within(labeled!).getAllByRole("cell"); // Status, Reason, Matches, then the result columns
+    expect(cells[2]).toHaveTextContent("7/8");
+    expect(cells[3]).toHaveClass("cell-match"); // Tone: Upset
+    expect(cells[9]).toHaveClass("cell-mismatch"); // Speaker overlap
+    expect(cells[9]).toHaveTextContent("Yesexpected No");
+    expect(cells[11]).toHaveClass("cell-confidence");
+    expect(cells[11]).toHaveTextContent("90%");
+    expect(cells[11]!.style.getPropertyValue("--confidence")).toBe("0.898");
+
+    // call_002 fails in the mock (last file) and has no label: nothing to compare
+    expect(within(unlabeled!).getAllByRole("cell")[2]).toHaveTextContent("");
+    expect(within(totals!).getByRole("rowheader")).toHaveTextContent("Matched (1 labeled file)");
+    expect(within(totals!).getAllByRole("cell")[0]).toHaveTextContent("7/8");
+    expect(screen.getByText("Matches the expected label")).toBeInTheDocument();
+  });
+
   it("asks before replacing a previous batch", async () => {
     const user = userEvent.setup();
     const { api, clock } = testApi();

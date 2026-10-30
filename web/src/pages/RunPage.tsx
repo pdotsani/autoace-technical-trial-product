@@ -1,14 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
+import type { CSSProperties } from "react";
 import { Link, useParams } from "react-router";
 
-import type { RunView } from "@autoace/shared/api-types";
+import type { FileView, RunView } from "@autoace/shared/api-types";
 
 import { useApi } from "../api/ApiContext";
 import { ApiError } from "../api/client";
 import { DownloadButtons } from "../components/DownloadButtons";
 import { FILE_STATUS_TONE, StatusChip } from "../components/StatusChip";
 import { EmptyState, ErrorState, Loading } from "../components/States";
-import { formatDate, RESULT_COLUMNS, resultCell } from "../format";
+import { COMPARED_COLUMNS, countMatches, fieldMatches, formatDate, RESULT_COLUMNS, resultCell } from "../format";
 
 export const POLL_MS = 3000;
 
@@ -52,6 +53,7 @@ export function RunPage() {
 function RunDetails({ view, refreshing }: { view: RunView; refreshing: boolean }) {
   const { counts } = view;
   const finished = counts.done + counts.failed + counts.skipped;
+  const compared = view.files.filter(isCompared);
 
   return (
     <section className="stack">
@@ -90,6 +92,8 @@ function RunDetails({ view, refreshing }: { view: RunView; refreshing: boolean }
         </div>
       )}
 
+      {counts.done > 0 && <Legend labeled={view.labeled} />}
+
       <div className="table-wrap" tabIndex={0} role="region" aria-label="Files and results">
         <table className="table">
           <thead>
@@ -97,6 +101,7 @@ function RunDetails({ view, refreshing }: { view: RunView; refreshing: boolean }
               <th scope="col">File</th>
               <th scope="col">Status</th>
               <th scope="col">Reason</th>
+              {view.labeled && <th scope="col">Matches</th>}
               {RESULT_COLUMNS.map((c) => (
                 <th scope="col" key={c.key}>
                   {c.label}
@@ -115,17 +120,93 @@ function RunDetails({ view, refreshing }: { view: RunView; refreshing: boolean }
                   <StatusChip tone={FILE_STATUS_TONE[f.status]} label={f.status === "processing" && !view.submitted ? "not started" : f.status} />
                 </td>
                 <td className="reason">{f.error ?? ""}</td>
+                {view.labeled && <td>{isCompared(f) ? `${countMatches(f.result, f.expected)}/${COMPARED_COLUMNS.length}` : ""}</td>}
                 {RESULT_COLUMNS.map((c) => (
-                  <td key={c.key}>{f.status === "done" ? resultCell(f.result, c) : ""}</td>
+                  <ResultCell key={c.key} file={f} column={c} />
                 ))}
               </tr>
             ))}
           </tbody>
+          {compared.length > 0 && (
+            <tfoot>
+              <tr>
+                <th scope="row" colSpan={3}>
+                  Matched ({compared.length} labeled file{compared.length === 1 ? "" : "s"})
+                </th>
+                <td>
+                  {compared.reduce((n, f) => n + countMatches(f.result, f.expected), 0)}/{compared.length * COMPARED_COLUMNS.length}
+                </td>
+                {RESULT_COLUMNS.map((c) => (
+                  <td key={c.key}>{c.key === "confidence" ? "" : `${compared.filter((f) => fieldMatches(f.result, f.expected, c.key)).length}/${compared.length}`}</td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 
       {view.labeled && <ExpectedTable files={view.files.filter((f) => f.inCsv)} />}
     </section>
+  );
+}
+
+type ComparedFile = FileView & Required<Pick<FileView, "result" | "expected">>;
+
+/** A finished file that has a label to compare with. */
+function isCompared(f: FileView): f is ComparedFile {
+  return f.status === "done" && f.result !== undefined && f.expected !== undefined;
+}
+
+/**
+ * One result cell. Against a label: green when it matches, red with the expected value when it
+ * doesn't. Confidence is shaded from amber (0%) to green (100%) whether or not there's a label.
+ */
+function ResultCell({ file, column }: { file: FileView; column: (typeof RESULT_COLUMNS)[number] }) {
+  if (file.status !== "done" || !file.result) return <td>{""}</td>; // no result yet
+  const text = resultCell(file.result, column);
+  if (column.key === "confidence") {
+    const value = file.result.confidence;
+    if (typeof value !== "number") return <td>{text}</td>;
+    return (
+      <td className="cell-confidence" style={{ "--confidence": Math.min(Math.max(value, 0), 1) } as CSSProperties}>
+        {text}
+      </td>
+    );
+  }
+  if (!isCompared(file)) return <td>{text}</td>;
+  if (fieldMatches(file.result, file.expected, column.key)) {
+    return (
+      <td className="cell-match">
+        {text}
+        <span className="visually-hidden"> (matches expected)</span>
+      </td>
+    );
+  }
+  return (
+    <td className="cell-mismatch">
+      {text}
+      <span className="expected-hint">expected {resultCell(file.expected, column)}</span>
+    </td>
+  );
+}
+
+function Legend({ labeled }: { labeled: boolean }) {
+  return (
+    <ul className="legend muted small" aria-label="Highlighting">
+      {labeled && (
+        <>
+          <li>
+            <span className="swatch cell-match" aria-hidden="true" /> Matches the expected label
+          </li>
+          <li>
+            <span className="swatch cell-mismatch" aria-hidden="true" /> Differs (expected value below)
+          </li>
+        </>
+      )}
+      <li>
+        <span className="swatch swatch-confidence" aria-hidden="true" /> Confidence, 0% to 100%
+      </li>
+    </ul>
   );
 }
 

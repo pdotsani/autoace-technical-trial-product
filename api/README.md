@@ -27,9 +27,9 @@ gets 401 `UNAUTHORIZED`. With `AUTH_MODE=dev` every request is `DEV_USER_ID` (no
   younger than `STALE_AFTER_SEC`).
 - **Timed out:** a submitted file with no result after `STALE_AFTER_SEC` reports
   `failed` / `timed out`.
-- **Labels:** the CSV's `result_json` labels are stored in the manifest as `expected` (for
-  scoring later). `GET /runs/{runId}` returns them per file, so the dashboard can show them
-  next to the results. They are never sent to the worker.
+- **Labels:** the CSV's `result_json` labels are stored in the manifest as `expected`.
+  `GET /runs/{runId}` returns them per file, and the dashboard compares them with the
+  results. They are never sent to the worker.
 - **CORS:** no CORS headers come from the Lambda. API Gateway's CORS configuration handles
   them, and the bucket has its own CORS rule for the presigned PUTs (see DEPLOY.md).
 
