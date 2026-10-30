@@ -8,6 +8,9 @@ export default defineConfig({
     alias: { "csv-parse/sync": "csv-parse/browser/esm/sync" },
   },
   server: { port: 5173, strictPort: true }, // the API's CORS allows http://localhost:5173
+  // jszip is imported only when a ZIP is picked. Pre-bundle it at startup, or the dev server
+  // finds it then, re-bundles its deps under a new hash and the open page's import 504s.
+  optimizeDeps: { include: ["jszip"] },
   test: {
     environment: "jsdom",
     include: ["tests/**/*.test.{ts,tsx}"],

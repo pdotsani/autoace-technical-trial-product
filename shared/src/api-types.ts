@@ -17,6 +17,7 @@ export type ApiErrorCode =
   | "NOT_COMPLETE"
   | "NOT_FOUND"
   | "METHOD_NOT_ALLOWED"
+  | "UNAUTHORIZED"
   | "AUTH_NOT_CONFIGURED"
   | "INTERNAL";
 

@@ -58,12 +58,12 @@ JavaScript bundle and anyone can read it, so only public values go here.
 |---|---|---|
 | `VITE_API_MODE` | `mock` (default), `live` | Which `ApiClient` to use |
 | `VITE_API_URL` | `https://<api-id>.execute-api.us-east-2.amazonaws.com` | The API Gateway endpoint, for `live` |
-| `VITE_AUTH_MODE` | `mock` (default), `supabase` | Fake sign-in, or Supabase (TODO) |
+| `VITE_AUTH_MODE` | `mock` (default), `supabase` | Fake sign-in, or Supabase email/password |
 | `VITE_SUPABASE_URL` | `https://<project>.supabase.co` | For `supabase` auth |
 | `VITE_SUPABASE_ANON_KEY` | the anon key | Public by design. Never the `service_role` key. |
 
-`VITE_AUTH_MODE` is separate from `VITE_API_MODE`, so the live API (currently `AUTH_MODE=dev`,
-which ignores the token) can be tried before Supabase is connected.
+`VITE_AUTH_MODE` is separate from `VITE_API_MODE`. An API with `AUTH_MODE=dev` ignores the
+token, so mock sign-in works against it; an API with `AUTH_MODE=jwt` needs `supabase`.
 
 ## What still needs connecting
 
@@ -75,14 +75,12 @@ which ignores the token) can be tried before Supabase is connected.
    `http://localhost:5173` (`api/DEPLOY.md` steps 3 and 4). Add the CloudFront domain when
    it exists. The dev server uses port 5173 with `strictPort`, so a busy port fails instead of
    moving to an origin CORS doesn't allow.
-3. **Supabase auth.** Implement `SupabaseAuthProvider` in `src/auth/AuthContext.tsx`. The TODO
-   there lists the calls: `signInWithPassword`, session refresh through `onAuthStateChange`,
-   and `getToken` from `session.access_token`. `@supabase/supabase-js` is installed but not
-   imported yet. Then set `VITE_AUTH_MODE=supabase`. There is no sign-up page: accounts are
-   created in the Supabase dashboard.
-4. **API auth.** Add a JWT authorizer for the Supabase issuer on the HTTP API, and switch
-   `getUserId` in `api/src/auth.ts` to `claims.sub`. Until then, anyone with the API URL can
-   use it.
+3. **Supabase auth.** `SupabaseAuthProvider` in `src/auth/AuthContext.tsx` signs in with
+   `signInWithPassword` and sends the session's access token. Set `VITE_AUTH_MODE=supabase`
+   plus `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. There is no sign-up page: accounts
+   are created in the Supabase dashboard.
+4. **API auth.** Set `AUTH_MODE=jwt` and `SUPABASE_URL` on the API Lambda. It then verifies
+   the token itself (`api/src/auth.ts`). Until then, anyone with the API URL can use it.
 
 ## Deployment to S3 + CloudFront (documented only, not set up)
 
@@ -119,7 +117,7 @@ src/api/live.ts           fetch against VITE_API_URL; XMLHttpRequest PUTs for up
 src/api/mock.ts           in-memory API using @autoace/shared's validation and status rules
 src/api/uploads.ts        uploads, 4 at a time
 src/api/ApiContext.tsx    picks the implementation from VITE_API_MODE
-src/auth/AuthContext.tsx  { user, getToken, signIn, signOut }: mock now, Supabase TODO
+src/auth/AuthContext.tsx  { user, getToken, signIn, signOut }: mock or Supabase
 src/staging/files.ts      folder / ZIP / drag-and-drop to staged files (skips hidden files and __MACOSX,
                           flattens a single top-level folder)
 src/staging/report.ts     summary line and the Analyze gating rules

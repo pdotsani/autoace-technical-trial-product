@@ -8,7 +8,10 @@ to the worker Lambda (`autoace-worker`), and reports status and results. Deploym
 ## Routes
 
 Errors are `{ "error": { "code", "message", "details"? } }` with a matching status code.
-The user ID comes only from `src/auth.ts` (`AUTH_MODE=dev` → `DEV_USER_ID` for now).
+The user ID comes only from `src/auth.ts`. With `AUTH_MODE=jwt` it is the `sub` of the Supabase
+access token in `Authorization: Bearer <token>`, verified in the Lambda against the project's
+JWKS (issuer `${SUPABASE_URL}/auth/v1`, audience `JWT_AUDIENCE`); a missing or invalid token
+gets 401 `UNAUTHORIZED`. With `AUTH_MODE=dev` every request is `DEV_USER_ID` (no auth).
 
 | Route | Does | Notable responses |
 |---|---|---|
@@ -51,7 +54,7 @@ src/routes.ts        route handlers
 src/manifest.ts      re-exports the manifest types and status rules from @autoace/shared/runs
 src/store.ts         S3 key layout and helpers (list, delete, get/put JSON, presign)
 src/config.ts        env vars, validated with zod at cold start
-src/auth.ts          getUserId (dev mode; JWT TODO)
+src/auth.ts          getUserId (Supabase JWT, or dev mode)
 ```
 
 Shared with the web app, in [`shared/`](../shared) (`@autoace/shared`):

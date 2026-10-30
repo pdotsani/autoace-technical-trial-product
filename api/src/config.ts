@@ -10,8 +10,12 @@ const extensionList = (fallback: string) =>
 const envSchema = z.object({
   BUCKET: z.string().min(1),
   WORKER_FUNCTION_NAME: z.string().min(1),
-  AUTH_MODE: z.string().default("dev"),
+  // dev = every request is DEV_USER_ID (no auth); jwt = a Supabase access token is required
+  AUTH_MODE: z.enum(["dev", "jwt"]).default("dev"),
   DEV_USER_ID: z.string().min(1).default("dev-user"),
+  // https://<project>.supabase.co, no trailing slash. Required when AUTH_MODE=jwt.
+  SUPABASE_URL: z.url().transform((u) => u.replace(/\/+$/, "")).optional(),
+  JWT_AUDIENCE: z.string().min(1).default("authenticated"),
   PUT_URL_EXPIRES: z.coerce.number().int().positive().default(900),
   WORKER_URL_EXPIRES: z.coerce.number().int().positive().default(3600),
   DOWNLOAD_URL_EXPIRES: z.coerce.number().int().positive().default(900),
@@ -20,7 +24,7 @@ const envSchema = z.object({
   SUPPORTED_AUDIO: extensionList(".wav,.mp3,.ogg,.m4a,.flac"),
   STALE_AFTER_SEC: z.coerce.number().int().positive().default(960),
   AWS_REGION: z.string().min(1), // set by Lambda
-});
+}).refine((env) => env.AUTH_MODE !== "jwt" || env.SUPABASE_URL, { path: ["SUPABASE_URL"], message: "required when AUTH_MODE=jwt" });
 
 export type Config = z.infer<typeof envSchema>;
 

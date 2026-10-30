@@ -25,7 +25,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     route = `${found.route.method} ${found.route.pattern}`;
     runId = found.params.runId;
 
-    const userId = getUserId(event);
+    const userId = await getUserId(event);
     const result = await found.route.handler({
       userId,
       params: found.params,

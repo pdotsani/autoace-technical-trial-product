@@ -16,7 +16,9 @@ export DEV_ORIGIN=http://localhost:5173
 
 > **Warning.** While `AUTH_MODE=dev` the API has no authentication: anyone with its URL can
 > create runs, upload files and read results (all as `DEV_USER_ID`). Keep the URL private, and
-> switch to JWT auth (see `src/auth.ts`) before sharing the dashboard.
+> switch to `AUTH_MODE=jwt` with `SUPABASE_URL` (see `src/auth.ts`) before sharing the
+> dashboard. The token is checked in the Lambda, not by an API Gateway authorizer, so it also
+> covers requests that reach the Lambda through a `$default` route.
 
 ## 1. IAM role `autoace-api-lambda`
 
