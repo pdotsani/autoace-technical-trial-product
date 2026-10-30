@@ -359,4 +359,9 @@ describe("routing", () => {
     expect((await call("GET", "/nope")).status).toBe(404);
     expect((await call("DELETE", "/runs")).body.error.code).toBe("METHOD_NOT_ALLOWED");
   });
+
+  it("answers browser preflights with 204", async () => {
+    const event = { rawPath: "/runs/abc/validate", requestContext: { http: { method: "OPTIONS" }, requestId: "req-1" } } as unknown as APIGatewayProxyEventV2;
+    expect(((await handler(event)) as APIGatewayProxyStructuredResultV2).statusCode).toBe(204);
+  });
 });

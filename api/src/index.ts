@@ -13,6 +13,11 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   let runId: string | undefined;
   let response: APIGatewayProxyResultV2;
 
+  // The API's $default route was made by quick create and can't be deleted, so it forwards
+  // browser preflights here instead of API Gateway answering them. API Gateway still adds
+  // the CORS headers; this only has to return a 2xx.
+  if (method === "OPTIONS") return { statusCode: 204 };
+
   try {
     const found = match(method, path);
     if (found.kind === "not_found") throw new ApiError(404, "NOT_FOUND", `no route for ${method} ${path}`);
