@@ -108,17 +108,21 @@ aws iam put-role-policy --role-name "${WORKER_ROLE_NAME}" --policy-name autoace-
   --policy-document file:///tmp/autoace-worker-policy.json
 ```
 
-**Image.** Build for the Lambda's architecture (`linux/amd64` for x86_64, the current
-deployment) and push to ECR. `--provenance=false` keeps the image a single-platform
-manifest, which Lambda requires.
+**Image.** Build for the Lambda's architecture and push to ECR. The worker runs on arm64
+(Graviton): measured on Lambda, it analyzes about 34% faster than on x86_64 and costs about
+46% less per minute of audio ([worker/README_worker.md](worker/README_worker.md#measured-on-lambda)).
+For x86_64, build with `--platform linux/amd64` and create the function with
+`--architectures x86_64`. `--provenance=false` keeps the image a single-platform manifest,
+which Lambda requires. On an Apple-silicon Mac the arm64 build runs natively (about 4 minutes
+here, most of it downloading the models).
 
 ```zsh
 aws ecr create-repository --repository-name "${ECR_REPO}"     # first time only
 aws ecr get-login-password | docker login --username AWS --password-stdin "${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
-export IMAGE="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:$(git rev-parse --short HEAD)"
+export IMAGE="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:$(git rev-parse --short HEAD)-arm64"
 export HF_TOKEN=hf_...                  # or: export $(grep ^HF_TOKEN= worker/.env)
-(cd worker && docker build --platform linux/amd64 --provenance=false \
+(cd worker && docker build --platform linux/arm64 --provenance=false \
   --secret id=hf_token,env=HF_TOKEN -t "${IMAGE}" .)
 docker push "${IMAGE}"
 ```
@@ -131,7 +135,7 @@ An image function takes a few minutes to become active.
 
 ```zsh
 aws lambda create-function --function-name "${WORKER_FUNCTION_NAME}" \
-  --package-type Image --code ImageUri="${IMAGE}" --architectures x86_64 \
+  --package-type Image --code ImageUri="${IMAGE}" --architectures arm64 \
   --role "arn:aws:iam::${ACCOUNT_ID}:role/${WORKER_ROLE_NAME}" \
   --memory-size 10240 --timeout 900 --ephemeral-storage Size=4096 \
   --environment "Variables={BUCKET=${BUCKET},TORCH_NUM_THREADS=6,CUSTOMER_CHANNEL=1}"
@@ -146,6 +150,10 @@ aws lambda put-function-concurrency --function-name "${WORKER_FUNCTION_NAME}" --
 
 **Update:** build and push a new tag as above, then
 `aws lambda update-function-code --function-name "${WORKER_FUNCTION_NAME}" --image-uri "${IMAGE}"`.
+To change architecture, add `--architectures arm64` or `--architectures x86_64` to that command,
+with an image built for it; there is no separate setting. The first cold start after a new
+image is deployed is slow (about 4 minutes measured) while Lambda caches the image; after
+that, cold starts load the models in 20–40 s.
 
 ## 4. API Lambda and API Gateway
 

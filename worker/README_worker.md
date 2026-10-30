@@ -133,8 +133,11 @@ export HF_TOKEN=hf_...          # or: export $(grep ^HF_TOKEN= .env)
 docker build --platform linux/arm64 --secret id=hf_token,env=HF_TOKEN -t auto-ace-worker .
 ```
 
-The token is passed as a BuildKit secret, so it is not stored in any layer. Use
-`--platform linux/amd64` for an x86_64 Lambda; arm64 (Graviton) is cheaper per second.
+The token is passed as a BuildKit secret, so it is not stored in any layer. The deployed
+worker is arm64 (Graviton), which is 20% cheaper per second and ran faster on Lambda (see
+[Measured on Lambda](#measured-on-lambda)). Use `--platform linux/amd64` for an x86_64 Lambda.
+Add `--provenance=false` when the image is for Lambda, which needs a single-platform manifest
+([DEPLOY.md](../DEPLOY.md#3-worker-lambda) has the push and deploy steps).
 
 **Run it locally** (the base image includes the Lambda Runtime Interface Emulator):
 
@@ -150,15 +153,16 @@ To test S3 from the container, also pass `-e BUCKET=... -e AWS_ACCESS_KEY_ID=...
 -e AWS_SECRET_ACCESS_KEY=... -e AWS_SESSION_TOKEN=... -e AWS_REGION=...` and send an event
 with `run_id`, `user_id` and a presigned `audio_url`.
 
-**Lambda settings** (starting points):
+**Lambda settings** (the deployed values):
 
 | Setting | Value | Why |
 |---|---|---|
-| Architecture | arm64 (match `--platform`) | cheaper per GB-second |
-| Memory | 8192 MB (10240 MB if too slow) | peak memory was 4.6 GB on the 172 s sample call, measured when both emotion models were loaded at start-up (emotion2vec_plus_large now loads only for neutral calls; re-measure with `Max Memory Used` before lowering this). Lambda's CPU share grows with memory, and the run is CPU-bound (it used about 2.6 cores locally) |
-| Timeout | 900 s | a 172 s mono call took about 2 min on an M-series Mac, mostly speaker separation; Lambda CPUs may be slower. The handler stops 30 s early to write a failure |
-| Ephemeral storage (`/tmp`) | 2048 MB | downloads up to `MAX_AUDIO_MB` (500) plus library caches |
-| Environment | `BUCKET`, optionally `MAX_AUDIO_MB`, `TORCH_NUM_THREADS`, `CUSTOMER_CHANNEL` | see "Lambda worker" |
+| Architecture | arm64 (match `--platform`) | 20% cheaper per GB-second, and faster on this workload (below) |
+| Memory | 10240 MB | Lambda's CPU share grows with memory (10 GB gives 6 vCPUs), and the run is CPU-bound. Peak memory on Lambda was 7.4–7.8 GB on arm64 and 6.8–7.7 GB on x86_64, with both emotion models loaded at start-up |
+| Timeout | 900 s (the maximum) | a 172 s call took 113–121 s on arm64. Calls of up to about 15 minutes fit at that rate; the handler stops 30 s early to write a failure |
+| Ephemeral storage (`/tmp`) | 4096 MB | downloads up to `MAX_AUDIO_MB` (500) plus library caches |
+| Environment | `BUCKET`, `TORCH_NUM_THREADS=6` (one thread per vCPU), `CUSTOMER_CHANNEL=1`; optionally `MAX_AUDIO_MB` | see "Lambda worker" |
+| Retries, concurrency | 0 retries, 20 reserved | see [DEPLOY.md](../DEPLOY.md#3-worker-lambda) |
 
 Cold starts load every model except emotion2vec_plus_large during Lambda's init phase: 11 s in
 the container under the local emulator, measured before that model became on-demand. Lambda allows 10 s for init; when it takes longer, Lambda reruns init as part
@@ -169,6 +173,30 @@ compressed), under Lambda's 10 GB limit; models are 3.7 GB of it and Python pack
 Measured in the container (arm64, Docker Desktop on an M-series Mac, 12 CPUs): call_001
 (31 s of audio) in 29 s and call_003 (172 s) in 111 s, 59 s of it speaker separation; both
 results identical to the CLI.
+
+### Measured on Lambda
+
+Image `4577622` (both emotion models loaded at start-up), 10240 MB, the three sample calls.
+On 2026-10-30, 15 invocations on x86_64 and 9 on arm64; the arm64 figures leave out the first
+cold start after the image was deployed (about 237 s of model loading, while Lambda cached
+the image). Prices are us-east-2: $0.0000166667 per GB-second on x86_64, $0.0000133334 on
+arm64.
+
+| | x86_64 | arm64 |
+|---|---|---|
+| Run time / audio time | 1.14 | 0.76 |
+| call_003 (172 s of audio), median | 177 s (150 s speaker separation) | 117 s (94 s speaker separation) |
+| Model loading per cold start, median | 38 s (31–42 s) | 30 s (20–67 s) |
+| Cost per minute of audio | $0.0114 | $0.0061 |
+| Cost per cold start | $0.0064 | $0.0039 |
+| 3 calls in parallel, all cold: time to last result | 204–206 s | 134 s |
+
+Every run on both architectures matched the three calls' expected labels on all eight fields.
+**Confidence was not reproducible on arm64**: the same file scored differently between runs
+(call_001: 0.898, 0.898, 0.729; call_002: 0.866, 0.866, 0.886), and call_003 scored 0.854
+against x86_64's 0.885. x86_64 gave the same confidence on every run (0.898, 0.886, 0.885).
+The cause is not known yet; arm64's math libraries and thread scheduling are the first
+suspects. Lambda also logs harmless `Error in cpuinfo: failed to parse ...` lines on arm64.
 
 ## Model folder layout
 
