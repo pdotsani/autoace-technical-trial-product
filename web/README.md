@@ -91,7 +91,7 @@ VITE_SUPABASE_ANON_KEY=<anon or publishable key>
 
 The dashboard is served from a private S3 bucket through CloudFront. Creating the bucket and
 distribution, the build command, the upload and the CORS origins are in the root
-[README](../README.md#5-dashboard-s3--cloudfront).
+[DEPLOY.md](../DEPLOY.md#5-dashboard-s3--cloudfront).
 
 ## Code
 

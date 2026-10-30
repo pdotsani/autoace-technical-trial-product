@@ -16,7 +16,7 @@ export SUPABASE_URL=https://<project-ref>.supabase.co
 ```
 
 This covers the API only. The whole setup (audio bucket, worker, Supabase, dashboard
-hosting) is in the root [README](../README.md#deploy-to-aws).
+hosting) is in [DEPLOY.md](../DEPLOY.md) at the repo root.
 
 > **Warning.** While `AUTH_MODE=dev` the API has no authentication: anyone with its URL can
 > create runs, upload files and read results (all as `DEV_USER_ID`). Keep the URL private, and
